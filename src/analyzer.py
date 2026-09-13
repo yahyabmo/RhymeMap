@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .engine import assign_rhyme_labels
+from .labeling import ENGINE_SIMILARITY, label_verse
 from .metrics import compute_metrics, metrics_to_row
 from .phonetics import process_verse
 
@@ -73,17 +73,21 @@ def analyze_dataset(
     only_terminal: bool = False,
     max_rows=None,
     progress=False,
+    engine: str = ENGINE_SIMILARITY,
+    **engine_options,
 ) -> list[dict]:
     """Analyse every verse in a CSV and return metric rows, densest first."""
     rows = []
     for track, artist, lyrics in iter_verses(csv_path, max_rows=max_rows):
         try:
             verse = process_verse(lyrics, artist=artist)
-            assign_rhyme_labels(
+            label_verse(
                 verse,
+                engine=engine,
                 min_occurrences=min_occurrences,
                 tail_window=tail_window,
                 only_terminal=only_terminal,
+                **engine_options,
             )
             metrics = compute_metrics(verse)
             rows.append(metrics_to_row(track, artist, metrics))

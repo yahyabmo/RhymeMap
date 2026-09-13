@@ -11,6 +11,7 @@ from pathlib import Path
 
 from src.analyzer import DEFAULT_DATASET, DatasetError, analyze_dataset
 from src.cache import flush_all
+from src.labeling import ENGINE_CHOICES, ENGINE_HELP, ENGINE_SIMILARITY
 from src.metrics import CSV_COLUMNS
 
 
@@ -22,6 +23,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tail-window", type=int, default=None, help="only consider the last N syllables of each line")
     parser.add_argument("--only-terminal", action="store_true", help="only consider line-final syllables (end rhyme)")
     parser.add_argument("--max-rows", type=int, default=None, help="stop after N rows")
+    parser.add_argument("--engine", "-e", default=ENGINE_SIMILARITY, choices=ENGINE_CHOICES,
+                        help="; ".join(f"{k}: {v}" for k, v in ENGINE_HELP.items()))
     parser.add_argument("--quiet", "-q", action="store_true", help="suppress per-track progress")
     return parser
 
@@ -37,6 +40,7 @@ def main(argv=None) -> int:
             only_terminal=args.only_terminal,
             max_rows=args.max_rows,
             progress=not args.quiet,
+            engine=args.engine,
         )
     except DatasetError as exc:
         print(f"error: {exc}", file=sys.stderr)

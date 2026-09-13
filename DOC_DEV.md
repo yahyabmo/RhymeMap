@@ -5,6 +5,7 @@
 3. [Data models](#models)
 4. [Phonetics](#phonetics)
 5. [Rhyme engine](#engine)
+5b. [Similarity engine](#similarity)
 6. [Metrics](#metrics)
 7. [Visualisation](#visual)
 8. [Batch analysis](#batch)
@@ -133,6 +134,82 @@ Two passes — count every signature, then label those reaching
 
 > `line.rhyme_label` exists on the model but is **not** written by this function,
 > contrary to earlier documentation. Labels live on syllables.
+
+---
+
+## 5b. Similarity engine (`src/phonology.py`, `src/similarity.py`) <a name="similarity"></a>
+
+The exact engine asks *"are these two signature strings equal?"*. Rhyme is not an
+equality relation: "bit"/"beat" nearly rhyme, "bit"/"bought" do not, and exact
+matching cannot express the difference. The similarity engine replaces the
+string comparison with a score in [0, 1].
+
+### `src/phonology.py` — the feature space
+
+- **Vowels** are placed by height, backness, rounding, tenseness, the target of
+  any offglide, and r-colouring. `vowel_distance` is their weighted distance.
+- **Consonants** are described by place, manner and voicing; `manner_distance`
+  encodes which manners sound alike (plosive/affricate are close, plosive/
+  approximant are not).
+- **Codas** are compared by `cluster_distance`: a Levenshtein alignment whose
+  substitution cost is the feature distance between two consonants rather than
+  0/1 on equality. This is what makes `-nt`/`-nd` near (0.10) and `-nt`/`-ks`
+  far (0.48).
+
+Both distances are rescaled by the largest distance attainable in their table.
+Without that step the weighted averages never approached 1.0, the usable range
+was compressed into roughly [0, 0.64], and unrelated pairs such as "cat"/"dog"
+outscored genuine near-rhymes.
+
+### `src/similarity.py` — scoring and grouping
+
+```
+score = (w_nucleus·nucleus_sim + w_coda·coda_sim + w_stress·stress_sim) / Σw
+score ×= (1 − onset_identity_penalty)   if both onsets are non-empty and equal
+```
+
+The onset term is the part naive implementations miss: "cat"/"cat" and
+`lookin'`/`lookin'` have a perfect rime, so a rime-only score rates them 1.0.
+They are repetition, not rhyme. Two *empty* onsets are not penalised — sharing
+"no onset" is not sharing an onset.
+
+Observed ordering on the reference pairs:
+
+| Pair | Score |
+|---|---|
+| cat / hat (perfect) | 1.00 |
+| loud / out (slant) | 0.94 |
+| bit / feet (near) | 0.87 |
+| **cat / cat (repetition)** | **0.65** |
+| cat / dog (unrelated) | 0.55 |
+| cat / cool (unrelated) | 0.20 |
+
+All weights live in `DEFAULT_WEIGHTS`, a single documented dict, so the
+configuration is one object to defend and one object for `eval/` to sweep.
+
+Grouping is agglomerative clustering with **average** linkage over the pairwise
+distance matrix. Average linkage matters: with single linkage one loose pair
+chains two unrelated rhyme families into a single group. The matrix is built
+over *distinct* rhyme keys rather than syllable instances, since a dense verse
+repeats sounds heavily.
+
+### `src/labeling.py` — engine selection
+
+Every CLI takes `--engine {exact, families, similarity}` and dispatches through
+`label_verse`. `exact` is the v1 baseline, preserved so the evaluation in
+`eval/` has something honest to compare against.
+
+On the bundled corpus:
+
+| Engine | Mean density | Mean multi | Mean groups |
+|---|---|---|---|
+| exact | 29.3% | 1.1% | 6.8 |
+| families | 38.5% | 1.7% | 8.5 |
+| similarity | 61.6% | 6.6% | 9.2 |
+
+These numbers show the engines behave *differently*, not that one is *better* —
+a higher density is equally consistent with over-grouping. Phase 4 settles that
+against a hand-annotated gold set.
 
 ---
 

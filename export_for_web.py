@@ -12,7 +12,7 @@ from pathlib import Path
 
 from src.analyzer import DEFAULT_DATASET, DatasetError, iter_verses
 from src.cache import flush_all
-from src.engine import assign_rhyme_labels
+from src.labeling import ENGINE_CHOICES, ENGINE_SIMILARITY, label_verse
 from src.metrics import compute_metrics
 from src.phonetics import process_verse
 
@@ -43,14 +43,14 @@ def verse_to_dict(verse, artist: str, track: str) -> dict:
     return {"artist": artist, "track": track, "lines": lines, "metrics": compute_metrics(verse)}
 
 
-def build(csv_path: str, limit: int | None, min_occurrences: int, tail_window) -> list[dict]:
+def build(csv_path: str, limit: int | None, min_occurrences: int, tail_window, engine: str) -> list[dict]:
     verses = []
     for track, artist, lyrics in iter_verses(csv_path):
         if limit is not None and len(verses) >= limit:
             break
         try:
             verse = process_verse(lyrics, artist=artist)
-            assign_rhyme_labels(verse, min_occurrences=min_occurrences, tail_window=tail_window)
+            label_verse(verse, engine=engine, min_occurrences=min_occurrences, tail_window=tail_window)
             verses.append(verse_to_dict(verse, artist, track))
         except Exception as exc:
             print(f"  !! {track}: {type(exc).__name__}: {exc}")
@@ -64,10 +64,11 @@ def main(argv=None) -> int:
     parser.add_argument("--limit", "-n", type=int, default=None, help="export at most N verses (default: all)")
     parser.add_argument("--min-occurrences", type=int, default=2, help="minimum signature count to label")
     parser.add_argument("--tail-window", type=int, default=None, help="only label the last N syllables per line")
+    parser.add_argument("--engine", "-e", default=ENGINE_SIMILARITY, choices=ENGINE_CHOICES, help="rhyme engine")
     args = parser.parse_args(argv)
 
     try:
-        verses = build(args.input, args.limit, args.min_occurrences, args.tail_window)
+        verses = build(args.input, args.limit, args.min_occurrences, args.tail_window, args.engine)
     except DatasetError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
