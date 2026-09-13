@@ -33,12 +33,16 @@
 
   <main id="top">
     <section class="shell hero">
-      <span class="eyebrow"><span class="dot" aria-hidden="true"></span> phonetic rhyme analysis</span>
       <h1 id="heroTitle">Hear the pattern.</h1>
-      <p class="hero-lede">
+      <p class="hero-lede" id="heroLede">
         Paste a YouTube link and RhymeMapper reads the captions, breaks every word into
         syllables, and finds the <span class="rotating" id="rotatingWord">multisyllabic chains</span>
         that carry a verse.
+      </p>
+      <p class="hero-lede" id="heroLedeStatic" hidden>
+        Thirteen verses, broken into syllables and grouped by how they actually sound —
+        including the <span class="rotating" id="rotatingWordStatic">multisyllabic chains</span>
+        that carry a verse. Hover anything to trace it.
       </p>
 
       <form class="linkbar" id="linkForm" autocomplete="off">
@@ -48,15 +52,21 @@
         <button class="btn btn-primary star-border" id="analyseBtn" type="submit">Analyse</button>
       </form>
 
+      <div class="static-cta" hidden id="staticCta">
+        <button class="btn btn-primary star-border" id="exploreBtn" type="button">Explore the analysis</button>
+        <a class="btn btn-ghost" href="https://github.com/yahyabmo/RhymeMap#install"
+           target="_blank" rel="noopener">Analyse your own songs</a>
+      </div>
+
       <p class="hero-hint">
         No link? <button type="button" id="pasteToggle">Paste lyrics instead</button>
         · <button type="button" id="demoBtn">Load the demo verse</button>
       </p>
       <p class="static-note">
-        You are looking at the read-only demo: the songs below are pre-analysed, and
-        analysing a new one needs the engine running locally.
-        <a href="https://github.com/yahyabmo/RhymeMap#install" target="_blank" rel="noopener">Run it yourself</a>
-        — it is two commands.
+        This demo is a static page, so the analysis engine is not running behind it.
+        Everything below is already analysed and fully explorable — to run a song of your
+        own, <a href="https://github.com/yahyabmo/RhymeMap#install" target="_blank" rel="noopener">install
+        it locally</a>.
       </p>
       <p class="status" id="status" role="status" aria-live="polite"></p>
 

@@ -51,6 +51,7 @@
  * screen. Every component below that sets `display` is listed here. */
 [hidden],
 #pastePanel[hidden], .paste[hidden], .stats[hidden], .player[hidden],
+.static-cta[hidden], .hero-lede[hidden],
 .player-frame[hidden], .tooltip[hidden], #analysis[hidden], .track-art[hidden] {
   display: none !important;
 }
@@ -402,7 +403,23 @@ body.is-static .static-note {
   color: var(--ink-3);
 }
 body.is-static .static-note a { color: var(--flame); }
-body.is-static .linkbar { opacity: .55; }
+
+/* The static build cannot analyse a link -- no engine behind it, and a browser
+ * cannot read YouTube captions cross-origin either. Rather than leave an input
+ * that fails on click, it is replaced by what the page *can* do. */
+body.is-static .linkbar,
+body.is-static .hero-hint { display: none; }
+
+.static-cta {
+  display: flex;
+  gap: var(--gap-sm);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+@media (max-width: 520px) {
+  .static-cta { flex-direction: column; }
+  .static-cta .btn { width: 100%; }
+}
 
 .status { min-height: 22px; margin-top: var(--gap); font-size: .82rem; color: var(--ink-2); }
 .status.error { color: var(--danger); }

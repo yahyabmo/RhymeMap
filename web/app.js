@@ -13,7 +13,9 @@ const verses = typeof rhymeData !== 'undefined' ? rhymeData.slice() : [];
 const el = (id) => document.getElementById(id);
 const ui = {
   aurora: el('aurora'), grain: el('grain'), waves: el('waves'), progress: el('progress'),
-  rotatingWord: el('rotatingWord'),
+  rotatingWord: el('rotatingWord'), rotatingWordStatic: el('rotatingWordStatic'),
+  heroLede: el('heroLede'), heroLedeStatic: el('heroLedeStatic'),
+  staticCta: el('staticCta'), explore: el('exploreBtn'),
   form: el('linkForm'), input: el('linkInput'), analyse: el('analyseBtn'),
   status: el('status'), pasteToggle: el('pasteToggle'), pastePanel: el('pastePanel'),
   lyricsInput: el('lyricsInput'), analysePaste: el('analysePasteBtn'), demo: el('demoBtn'),
@@ -439,8 +441,8 @@ const isStatic = () => typeof RHYMEMAP_STATIC !== 'undefined' && RHYMEMAP_STATIC
 
 function requireServer() {
   if (isStatic()) {
-    setStatus('This is the read-only demo. Run it locally to analyse your own songs — '
-      + 'see the link below.', 'error');
+    // The note under the hero already explains this; repeating it in the status
+    // line just says the same thing twice.
     return false;
   }
   if (overHttp()) return true;
@@ -528,7 +530,13 @@ function populateTracks() {
 function init() {
   document.body.classList.add('dim');
 
-  if (isStatic()) document.body.classList.add('is-static');
+  if (isStatic()) {
+    // Swap the hero for one that describes what this build actually does.
+    document.body.classList.add('is-static');
+    ui.heroLede.hidden = true;
+    ui.heroLedeStatic.hidden = false;
+    ui.staticCta.hidden = false;
+  }
 
   auroraHandle = Effects.aurora(ui.aurora);
   wavesHandle = Effects.waves(ui.waves);
@@ -537,12 +545,8 @@ function init() {
   Effects.clickSpark(document.body);
   Effects.magnet(ui.analyse);
   Effects.scrollProgress(ui.progress);
-  Effects.rotatingText(ui.rotatingWord, [
-    'multisyllabic chains',
-    'slant rhymes',
-    'internal rhyme',
-    'assonance',
-  ]);
+  const rotating = ['multisyllabic chains', 'slant rhymes', 'internal rhyme', 'assonance'];
+  Effects.rotatingText(isStatic() ? ui.rotatingWordStatic : ui.rotatingWord, rotating);
   document.querySelectorAll('.panel').forEach(Effects.spotlight);
   document.querySelectorAll('.stat').forEach((node) => { Effects.glare(node); Effects.tilt(node); });
   ui.lyrics.classList.add('fade-foot');
@@ -560,6 +564,10 @@ function init() {
   ui.analysePaste.addEventListener('click', analysePasted);
   ui.lyricsInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) analysePasted();
+  });
+
+  ui.explore.addEventListener('click', () => {
+    ui.analysis.scrollIntoView({ block: 'start' });
   });
 
   ui.demo.addEventListener('click', () => {
