@@ -25,6 +25,9 @@ help:
 
 install:
 	pip install -r requirements.txt
+	# g2p_en declares `distance`, which cannot build against setuptools 60+.
+	# It never imports it; its real dependencies are in requirements.txt.
+	pip install --no-deps g2p_en
 	$(PYTHON) -m scripts.fetch_nltk_data
 
 test:

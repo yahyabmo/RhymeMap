@@ -21,18 +21,16 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install build workaround for `distance`
-        # g2p_en depends on `distance`, whose setup.py uses the `install_layout`
-        # attribute removed in setuptools 60. Build it against an older
-        # setuptools before the main install resolves it.
+      - name: Install dependencies
+        # g2p_en is installed with --no-deps: it declares `distance`, whose
+        # setup.py uses an attribute setuptools removed in v60, and it never
+        # imports it. Downgrading setuptools to work around that broke pip
+        # itself on 3.12 ("Cannot import 'setuptools.build_meta'"), which is
+        # what this replaces.
         run: |
           python -m pip install --upgrade pip wheel
-          python -m pip install "setuptools<60"
-          python -m pip install --no-build-isolation distance
-          python -m pip install --upgrade setuptools
-
-      - name: Install dependencies
-        run: python -m pip install -r requirements.txt ruff
+          python -m pip install -r requirements.txt ruff
+          python -m pip install --no-deps g2p_en
 
       - name: Cache NLTK data
         uses: actions/cache@v4
