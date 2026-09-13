@@ -29,7 +29,8 @@ LYRICS = ("His palms are sweaty, knees weak, arms are heavy\n"
 VERSE_KEYS = {"artist", "track", "engine", "text", "lines", "metrics", "groups",
               "audio", "timed", "source"}
 SYLLABLE_KEYS = {"text", "label", "nucleus", "coda", "onset", "start", "end"}
-GROUP_KEYS = {"label", "syllables", "length", "occurrences", "similarity", "strength"}
+GROUP_KEYS = {"label", "syllables", "length", "occurrences", "similarity", "strength",
+              "rime", "exemplars", "positions"}
 
 
 class TestVerseSerialisation(unittest.TestCase):
@@ -82,6 +83,29 @@ class TestAnalyseText(unittest.TestCase):
                 self.assertEqual(set(payload), VERSE_KEYS)
                 self.assertEqual(payload["engine"], engine)
                 self.assertEqual(payload["text"], LYRICS)
+
+    def test_groups_are_named_after_their_sound(self):
+        """Not "A"/"B": a group is named from its own rime, e.g. "-eddy"."""
+        payload = analyse_text(LYRICS, "You", "Pasted", engine="similarity")
+        labels = [g["label"] for g in payload["groups"]]
+        self.assertTrue(labels)
+        self.assertFalse(any(len(label) <= 2 and label.isalpha() for label in labels),
+                         f"spreadsheet-style labels survived: {labels}")
+        self.assertTrue(all(g["rime"] for g in payload["groups"]))
+
+    def test_chain_names_are_phrases(self):
+        payload = analyse_text(LYRICS, "You", "Pasted", engine="chains")
+        multi = [g for g in payload["groups"] if g["length"] > 1]
+        for group in multi:
+            self.assertNotIn(group["label"], {"A", "B", "C"})
+
+    def test_group_names_match_the_syllable_labels(self):
+        """Renaming must rewrite both, or the viewer colours nothing."""
+        payload = analyse_text(LYRICS, "You", "Pasted", engine="similarity")
+        used = {syl["label"]
+                for line in payload["lines"] for word in line
+                for syl in word["syllables"] if syl["label"]}
+        self.assertEqual(used, {g["label"] for g in payload["groups"]})
 
     def test_chain_groups_carry_length_and_similarity(self):
         payload = analyse_text(LYRICS, "You", "Pasted", engine="chains")

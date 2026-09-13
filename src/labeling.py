@@ -29,8 +29,14 @@ ENGINE_HELP = {
 }
 
 
-def label_verse(verse, engine: str = ENGINE_SIMILARITY, **kwargs):
+def label_verse(verse, engine: str = ENGINE_SIMILARITY, rename: bool = True, **kwargs):
     """Label ``verse`` in place with the named engine; returns its registry.
+
+    With ``rename`` (the default) the engine's internal labels are replaced by
+    names taken from how each group sounds -- "-ames", "they say lookin boy" --
+    and the descriptions are left on ``verse.metadata["groups"]``. Doing it here
+    rather than inside each engine means every engine gets it, and the naming
+    has the finished grouping to work from.
 
     Unsupported keyword arguments are dropped rather than raising, so callers
     can pass one options bag to any engine.
@@ -42,7 +48,11 @@ def label_verse(verse, engine: str = ENGINE_SIMILARITY, **kwargs):
         from .chains import assign_chain_labels
 
         allowed = {"weights", "threshold", "max_window", "min_occurrences", "max_line_gap"}
-        assign_chain_labels(verse, **{k: v for k, v in kwargs.items() if k in allowed})
+        chains = assign_chain_labels(verse, **{k: v for k, v in kwargs.items() if k in allowed})
+        if rename:
+            from .naming import rename_groups
+
+            verse.metadata["groups"] = rename_groups(verse, chains)
         # Chains own the labels directly; there is no signature registry.
         from .engine import RhymeRegistry
 
@@ -53,11 +63,21 @@ def label_verse(verse, engine: str = ENGINE_SIMILARITY, **kwargs):
 
         allowed = {"weights", "threshold", "min_occurrences", "tail_window",
                    "only_terminal", "skip_unstressed_midline"}
-        return assign_similarity_labels(verse, **{k: v for k, v in kwargs.items() if k in allowed})
+        registry = assign_similarity_labels(verse, **{k: v for k, v in kwargs.items() if k in allowed})
+        if rename:
+            from .naming import rename_groups
+
+            verse.metadata["groups"] = rename_groups(verse)
+        return registry
 
     from .engine import assign_rhyme_labels
 
     allowed = {"min_occurrences", "tail_window", "only_terminal", "include_stress"}
     options = {k: v for k, v in kwargs.items() if k in allowed}
     options["use_consonant_families"] = engine == ENGINE_FAMILIES
-    return assign_rhyme_labels(verse, **options)
+    registry = assign_rhyme_labels(verse, **options)
+    if rename:
+        from .naming import rename_groups
+
+        verse.metadata["groups"] = rename_groups(verse)
+    return registry

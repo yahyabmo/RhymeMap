@@ -120,6 +120,11 @@ bundled verses pre-analysed.
   lookin' boy` / `they say lookin' boy` legible as a single structure.
 - **Switching the engine re-analyses the song on screen**, so the v1 baseline and
   the current engine can be compared on the same lyrics.
+- **Groups are named after how they sound** — `-ames`, `-ike`, `straight face
+  lookin' boy` — not `A`, `B`, `AB`. The name comes from the group's own rime, so
+  it means something, it can be said aloud, and it is the same in every song.
+  Each row shows example words, the exact rime, and a map of where the group
+  falls across the verse.
 - **Rhyme colour is generated from the phonetics**, not picked from a palette.
   There is no upper bound on groups: *Rap God* produces 56 under the exact engine
   and 257 under chain detection.

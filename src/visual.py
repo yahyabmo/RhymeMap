@@ -66,8 +66,8 @@ class VisualEngine:
         if legend:
             self.print_legend(verse)
 
-    def print_legend(self, verse: Verse) -> None:
-        """List each rhyme group and how many syllables it covers."""
+    def print_legend(self, verse: Verse, limit: int = 20) -> None:
+        """List each rhyme group: what it is called, how big, and examples."""
         counts: dict[str, int] = {}
         for syl in verse.syllables():
             if syl.rhyme_label:
@@ -75,9 +75,25 @@ class VisualEngine:
         if not counts:
             print("(no rhyme groups above the occurrence threshold)")
             return
-        print("Rhyme groups:")
-        for label, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])):
+
+        described = verse.metadata.get("groups") or {}
+        ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+        print(f"Rhyme groups ({len(ordered)}):")
+        for label, count in ordered[:limit]:
+            name = described.get(label)
             color = self._color_for(label)
-            swatch = f"{color} {label} {RESET}" if color else f"[{label}]"
-            print(f"  {swatch} {count} syllables")
+            swatch = f"{color}  {RESET}" if color else "  "
+
+            size = (f"{name.length}-syl x{name.occurrences}"
+                    if name and name.length > 1 else f"{count} syl")
+            detail = ""
+            if name and name.exemplars:
+                detail = "  " + ", ".join(name.exemplars[:3])
+            if name and name.rime:
+                detail += f"   [{name.rime}]"
+            print(f"  {swatch} {label:<26} {size:>12}{detail}")
+
+        if len(ordered) > limit:
+            print(f"  ... and {len(ordered) - limit} more")
         print()

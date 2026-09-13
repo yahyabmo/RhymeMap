@@ -8,6 +8,7 @@
 5b. [Similarity engine](#similarity)
 5c. [Chain detection](#chains)
 5d. [Audio sync](#timing)
+5e. [Naming rhyme groups](#naming)
 6. [Metrics](#metrics)
 7. [Visualisation](#visual)
 8. [Batch analysis](#batch)
@@ -331,6 +332,76 @@ the highlight where it was, so the viewer also listens for `seeked` and
 The highlight lookup is a binary search over the syllables sorted by start time.
 `timeupdate` fires about four times a second and a linear scan of ~1500
 syllables each time is wasteful enough to show up on a phone.
+
+---
+
+## 5e. Naming rhyme groups (`src/naming.py`) <a name="naming"></a>
+
+Groups were labelled `A`, `B`, … `Z`, `AA`, `AB`, in order of first appearance.
+That is a spreadsheet column, not a name, and it fails three ways:
+
+* **It says nothing.** "Group AB" tells you nothing about the sound, and a dense
+  verse produces 257 of them.
+* **It is unstable.** The letter depends on reading order, so the same rhyme is
+  called something different in every song — and under every engine on the same
+  song. Nothing can be compared or remembered.
+* **It cannot be spoken.** People say "the *-ames* rhyme" or "the *lookin' boy*
+  chain". Nobody says "group AB".
+
+A group is now named after its own rime:
+
+| Engine | Before | After |
+|---|---|---|
+| similarity | `A` | `-im` — *women, him, slim* |
+| similarity | `D` | `-ike` — *like, rhyme, while* |
+| similarity | `Q` | `-eel` — *feel, wheel, appeal* |
+| chains | `F` | `straight face lookin boy` |
+| chains | `G` | `im devastatin` — *is ricochetin, its levitatin* |
+
+Because the name comes from the phonetics it is **stable**: the same rhyme is
+called the same thing everywhere. The colour is hashed from the name, so colour
+becomes stable too — `-ames` is the same hue in every song.
+
+### How a name is chosen
+
+**Spelling is borrowed, not generated.** English orthography is too irregular to
+synthesise from ARPAbet (`-ite` or `-yte`? `-oh` or `-ow`?), so the name is the
+tail of a word that is actually in the verse. The exact rime is kept alongside
+for anyone who wants it.
+
+**The tail starts at the labelled syllable's vowel.** `rime_from_spelling`
+counts vowel *runs*, so a digraph counts once, and indexes forward from the
+start — which is why `shame` gives `-ame` rather than the silent `-e`, and
+`asteroid` with its rime in syllable 2 gives `-oid` rather than `-asteroid`.
+
+**The rime is the modal one.** A similarity-clustered group holds near-matches,
+not identical sounds. Taking the first member's rime made the label and the
+phonetics disagree — `-im` labelled a group printed as `IH T`. The commonest
+`(nucleus, coda)` is what the group is heard as.
+
+**Short tails win for the label; content words win for the examples.** The
+shortest on-rime tail is the rime with least onset still clinging to it, so
+`-or` from *for* beats `-ormal` from *normal*. Function words are demoted only
+in the *examples*, where a reader needs something worth looking at.
+
+**A label must contain a real vowel.** The letter-name in "J.J. Fad" once
+labelled an entire group `-j`; `y` counts as a vowel only when it is not the
+first letter, or a group of `AE` words comes out as `-yeah` instead of `-eah`.
+
+**Collisions take another spelling before a number.** Two groups can honestly
+land on `-at` while sounding different (`AH T` and `AE T`). The second takes its
+next-best real spelling — `-atter` — and only falls back to `-at 2` if it has
+none.
+
+### Where it runs
+
+`rename_groups(verse, chains=None)` runs after an engine has finished, from
+`labeling.label_verse`, so every engine gets it and the naming has the completed
+grouping to work from. Descriptions are left on `verse.metadata["groups"]` and
+travel to the viewer with the rime, a few example words, and a **position map**
+— where each occurrence falls across the verse. Two groups with the same count
+can be spread evenly or bunched into one passage, and that difference is most of
+what a rhyme scheme *is*.
 
 ---
 

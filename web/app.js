@@ -169,19 +169,56 @@ function renderChains(verse) {
     row.type = 'button';
     row.className = 'chain';
     row.dataset.label = group.label;
-    row.title = group.similarity != null
-      ? `similarity ${group.similarity} · strength ${group.strength}`
-      : `strength ${group.strength}`;
+    row.title = [
+      group.rime ? `rime ${group.rime}` : '',
+      group.similarity != null ? `similarity ${group.similarity}` : '',
+      `strength ${group.strength}`,
+    ].filter(Boolean).join(' · ');
+
+    const size = group.length > 1
+      ? `${group.length}<span class="unit">syl</span>×${group.occurrences}`
+      : `${group.syllables}<span class="unit">syl</span>`;
+
+    // Examples are what make a name legible: "-ames" means little until you
+    // see flames / fame / shame beside it. A chain is named after one of its
+    // own spans, so that span is dropped here rather than printed twice.
+    const examples = (group.exemplars || [])
+      .filter((word) => word !== group.label)
+      .slice(0, 3)
+      .join(' · ');
 
     row.innerHTML =
       `<span class="chain-swatch" style="background:${colourFor(group.label)}"></span>` +
-      `<span class="chain-label">${group.label}</span>` +
-      `<span class="chain-meta">${group.length > 1
-        ? `${group.length}-syl ×${group.occurrences}` : `${group.syllables} syl`}</span>`;
+      `<span class="chain-body">` +
+        `<span class="chain-top">` +
+          `<span class="chain-label">${escapeHtml(group.label)}</span>` +
+          `<span class="chain-meta">${size}</span>` +
+        `</span>` +
+        (examples ? `<span class="chain-examples">${escapeHtml(examples)}</span>` : '') +
+        positionMap(group) +
+      `</span>`;
 
     row.addEventListener('click', () => toggleIsolate(group.label));
     ui.chains.appendChild(row);
   });
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* Where a group falls across the verse, as a strip of ticks. Two groups with
+ * the same count can be spread evenly or bunched into one passage, and that
+ * difference is most of what a rhyme scheme *is* -- the count alone hides it. */
+function positionMap(group) {
+  const positions = group.positions || [];
+  if (positions.length < 2) return '';
+  const colour = colourFor(group.label);
+  const ticks = positions
+    .map((p) => `<i style="left:${(p * 100).toFixed(2)}%;background:${colour}"></i>`)
+    .join('');
+  return `<span class="chain-map" aria-hidden="true">${ticks}</span>`;
 }
 
 function show(verse) {

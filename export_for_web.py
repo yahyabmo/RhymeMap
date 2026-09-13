@@ -29,6 +29,9 @@ def _group_summary(verse, chains=None) -> list[dict]:
     With the chain engine the strength is the chain's own
     ``length x similarity x occurrences``; otherwise it is the syllable count,
     so the list is ordered sensibly either way.
+
+    Each group also carries what it is called and why: the exact rime, a few
+    example words, and where in the verse it falls (for the position map).
     """
     counts: dict[str, int] = {}
     for syl in verse.syllables():
@@ -36,9 +39,11 @@ def _group_summary(verse, chains=None) -> list[dict]:
             counts[syl.rhyme_label] = counts.get(syl.rhyme_label, 0) + 1
 
     by_label = {c.label: c for c in (chains or [])}
+    described = verse.metadata.get("groups") or {}
     groups = []
     for label, count in counts.items():
         chain = by_label.get(label)
+        name = described.get(label)
         groups.append({
             "label": label,
             "syllables": count,
@@ -46,6 +51,9 @@ def _group_summary(verse, chains=None) -> list[dict]:
             "occurrences": len(chain.occurrences) if chain else count,
             "similarity": round(chain.similarity, 3) if chain else None,
             "strength": round(chain.strength, 2) if chain else float(count),
+            "rime": name.rime if name else "",
+            "exemplars": name.exemplars if name else [],
+            "positions": name.positions if name else [],
         })
     # Longest first, then strongest. Pure strength ordering buries the
     # multisyllabic chains beneath one-syllable groups that simply recur a lot,
@@ -105,17 +113,30 @@ def verse_to_dict(verse, artist: str, track: str, engine: str, chains=None, text
     }
 
 
+def label_and_name(verse, engine: str, min_occurrences: int, tail_window=None):
+    """Label a verse and name its groups. Returns the chains, if any.
+
+    Shared by ``analyse_text`` and ``analyse_song``: they carried near-identical
+    copies of this, and the copies drifted -- a rename added to one silently
+    left the other producing "F", "G", "J" instead of real names.
+    """
+    if engine == "chains":
+        from src.chains import assign_chain_labels
+        from src.naming import rename_groups
+
+        chains = assign_chain_labels(verse, min_occurrences=min_occurrences)
+        verse.metadata["groups"] = rename_groups(verse, chains)
+        return chains
+
+    label_verse(verse, engine=engine, min_occurrences=min_occurrences, tail_window=tail_window)
+    return None
+
+
 def analyse_text(lyrics: str, artist: str, track: str, engine: str = ENGINE_SIMILARITY,
                  min_occurrences: int = 2, tail_window=None, timings=None, audio: str = "") -> dict:
     """Run the pipeline over raw lyrics and return the viewer payload."""
     verse = process_verse(lyrics, artist=artist)
-    chains = None
-    if engine == "chains":
-        from src.chains import assign_chain_labels
-
-        chains = assign_chain_labels(verse, min_occurrences=min_occurrences)
-    else:
-        label_verse(verse, engine=engine, min_occurrences=min_occurrences, tail_window=tail_window)
+    chains = label_and_name(verse, engine, min_occurrences, tail_window)
 
     if timings:
         from src.timing import attach_timings, timing_coverage
@@ -130,13 +151,7 @@ def analyse_song(song, engine: str = ENGINE_SIMILARITY, min_occurrences: int = 2
                  tail_window=None) -> dict:
     """Analyse a Song from src.sources, keeping its provenance in the payload."""
     verse = process_verse(song.lyrics, artist=song.artist)
-    chains = None
-    if engine == "chains":
-        from src.chains import assign_chain_labels
-
-        chains = assign_chain_labels(verse, min_occurrences=min_occurrences)
-    else:
-        label_verse(verse, engine=engine, min_occurrences=min_occurrences, tail_window=tail_window)
+    chains = label_and_name(verse, engine, min_occurrences, tail_window)
 
     if song.timings:
         from src.timing import attach_timings

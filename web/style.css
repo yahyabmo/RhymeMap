@@ -582,26 +582,73 @@ body.tracing .syllable.plain { opacity: .08; }
 
 .chain {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--gap-sm);
   width: 100%;
   text-align: left;
   background: none;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  padding: 8px 10px;
+  padding: 9px 10px;
   cursor: pointer;
   color: var(--ink);
   font: inherit;
-  font-size: .84rem;
-  min-height: 40px;
+  min-height: 44px;
   transition: background var(--t-fast), border-color var(--t-fast);
 }
 .chain:hover { background: var(--surface-2); }
 .chain.active { border-color: var(--flame); background: var(--surface-2); }
-.chain-swatch { width: 14px; height: 14px; border-radius: 4px; flex: none; }
-.chain-label { font-family: var(--font-mono); font-size: .78rem; }
-.chain-meta { margin-left: auto; color: var(--ink-3); font-size: .72rem; white-space: nowrap; }
+
+.chain-swatch { width: 12px; height: 12px; border-radius: 4px; flex: none; margin-top: 4px; }
+.chain-body { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.chain-top { display: flex; align-items: baseline; gap: var(--gap-sm); }
+
+/* The name is the sound, so it is set in the phonetic face. */
+.chain-label {
+  font-family: var(--font-mono);
+  font-size: .82rem;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chain-meta {
+  margin-left: auto;
+  color: var(--ink-2);
+  font-size: .72rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.chain-meta .unit { color: var(--ink-3); margin: 0 2px; }
+
+/* "-ames" means nothing until flames / fame / shame sit under it. */
+.chain-examples {
+  font-size: .72rem;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Position map: where the group falls across the verse. */
+.chain-map {
+  position: relative;
+  display: block;
+  height: 5px;
+  margin-top: 5px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.chain-map i {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 5px;
+  margin-left: -1px;
+  border-radius: 1px;
+  opacity: .95;
+}
 
 .hint { font-size: .74rem; color: var(--ink-3); padding: 0 var(--gap-sm) var(--gap-sm); }
 
