@@ -1,6 +1,6 @@
 # RhymeMapper
 
-.PHONY: help install test stats plots demo web web-export serve eval gold tune clean all
+.PHONY: help install test stats plots demo web web-export serve karaoke eval gold tune clean all
 
 PYTHON = python3
 DATA_DIR = data
@@ -15,6 +15,7 @@ help:
 	@echo "  make plots     Generate all figures into $(DATA_DIR)/"
 	@echo "  make web       Export web/data.js and open the viewer"
 	@echo "  make serve     Serve the viewer with live analysis of your own lyrics"
+	@echo "  make karaoke   Export with word timings (AUDIO=... TIMINGS=...)"
 	@echo "  make eval      Run the ablation and artist-ID experiments"
 	@echo "  make gold      Rebuild eval/gold.json from the annotations"
 	@echo "  make clean     Remove caches and generated files"
@@ -50,6 +51,13 @@ gold:
 	$(PYTHON) -m eval.build_gold
 
 serve: web-export
+	$(PYTHON) -m scripts.serve_web
+
+# Karaoke playback: needs an audio file in web/ and a word-timing file.
+#   make karaoke AUDIO=track.mp3 TIMINGS=timings.json
+karaoke:
+	@test -n "$(TIMINGS)" || (echo "usage: make karaoke AUDIO=track.mp3 TIMINGS=timings.json" && exit 1)
+	$(PYTHON) -m export_for_web --input $(DATASET) --demo --timings $(TIMINGS) --audio $(AUDIO)
 	$(PYTHON) -m scripts.serve_web
 
 eval: gold

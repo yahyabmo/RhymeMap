@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -31,8 +33,37 @@ WEB_DIR = PROJECT_ROOT / "web"
 MAX_BODY_BYTES = 256 * 1024      # a very long verse is still only a few KB
 
 
+_RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
+
+
+class _RangeReader:
+    """A file wrapper that stops after `remaining` bytes, for copyfile()."""
+
+    def __init__(self, handle, remaining: int):
+        self._handle = handle
+        self._remaining = remaining
+
+    def read(self, amount: int = -1) -> bytes:
+        if self._remaining <= 0:
+            return b""
+        if amount is None or amount < 0:
+            amount = self._remaining
+        chunk = self._handle.read(min(amount, self._remaining))
+        self._remaining -= len(chunk)
+        return chunk
+
+    def close(self):
+        self._handle.close()
+
+
 class Handler(SimpleHTTPRequestHandler):
-    """Static files from web/, plus POST /api/analyze."""
+    """Static files from web/, plus POST /api/analyze.
+
+    Adds HTTP Range support, which SimpleHTTPRequestHandler does not implement.
+    Browsers refuse to seek within media served without it: setting
+    ``audio.currentTime`` silently snaps back to 0, so the karaoke view could be
+    played from the start but never scrubbed.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB_DIR), **kwargs)
@@ -40,6 +71,74 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):
         if "/api/" in str(args):
             super().log_message(fmt, *args)
+
+    def send_head(self):
+        """Serve a byte range when one is requested, else defer to the base class."""
+        range_header = self.headers.get("Range")
+        if not range_header:
+            return super().send_head()
+
+        match = _RANGE_RE.match(range_header.strip())
+        if not match:
+            return super().send_head()
+
+        path = self.translate_path(self.path)
+        if os.path.isdir(path):
+            return super().send_head()
+
+        try:
+            handle = open(path, "rb")
+        except OSError:
+            self.send_error(404, "File not found")
+            return None
+
+        try:
+            size = os.fstat(handle.fileno()).st_size
+            first, last = match.group(1), match.group(2)
+
+            if first:
+                start = int(first)
+                end = int(last) if last else size - 1
+            else:
+                # "bytes=-N" means the final N bytes.
+                if not last:
+                    handle.close()
+                    self.send_error(400, "Invalid Range header")
+                    return None
+                start = max(0, size - int(last))
+                end = size - 1
+
+            if start >= size or start > end:
+                handle.close()
+                self.send_response(416, "Requested Range Not Satisfiable")
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return None
+
+            end = min(end, size - 1)
+            handle.seek(start)
+
+            self.send_response(206, "Partial Content")
+            self.send_header("Content-Type", self.guess_type(path))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.send_header("Content-Length", str(end - start + 1))
+            self.end_headers()
+            return _RangeReader(handle, end - start + 1)
+        except (ValueError, OSError):
+            handle.close()
+            self.send_error(400, "Invalid Range header")
+            return None
+
+    def end_headers(self):
+        # Advertise range support so the browser enables seeking at all.
+        if not self._headers_buffer or not any(
+            b"Accept-Ranges" in chunk for chunk in self._headers_buffer
+        ):
+            self.send_header("Accept-Ranges", "bytes")
+        super().end_headers()
+
 
     def _send_json(self, payload, status=200):
         body = json.dumps(payload).encode("utf-8")

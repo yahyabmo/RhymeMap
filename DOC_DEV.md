@@ -7,6 +7,7 @@
 5. [Rhyme engine](#engine)
 5b. [Similarity engine](#similarity)
 5c. [Chain detection](#chains)
+5d. [Audio sync](#timing)
 6. [Metrics](#metrics)
 7. [Visualisation](#visual)
 8. [Batch analysis](#batch)
@@ -285,6 +286,51 @@ by chains of length ≥ 2), `chains`, `longest_chain` and `mean_chain_length`.
 `metrics.compute_metrics` stays the engine-agnostic view and agrees on density.
 Its `multi` runs about two points higher because it also counts two *adjacent*
 occurrences of a one-syllable chain as a run, which `chain_metrics` does not.
+
+---
+
+## 5d. Audio sync (`src/timing.py`, `scripts/align_audio.py`) <a name="timing"></a>
+
+`notes.md` has asked for this since March: attach a time to each word so the
+rhymes light up along with the track.
+
+Forced alignment is **not** a dependency. Every aligner is heavy — WhisperX pulls
+in torch, aeneas needs espeak and ffmpeg — so `scripts/align_audio.py` uses
+whichever happens to be installed and prints the options when neither is.
+Nothing under `src/` imports them, and `make install` is unchanged.
+
+`src/timing.py` reads what those tools emit:
+
+| Format | Shape |
+|---|---|
+| JSON | `[{"word": "palms", "start": 0.51, "end": 0.78}, ...]`, or a `{"words": [...]}` wrapper (WhisperX) |
+| WebVTT / SRT | one cue per word |
+| Audacity labels | `start<TAB>end<TAB>word` |
+
+`attach_timings` walks the verse and the timing list together with a small
+lookahead. Timing files and lyrics disagree constantly — ad-libs, censored words,
+`y'all` against `yall` — so an unmatched word is skipped rather than dragging
+every later word out of step. Syllable times are interpolated across each word by
+syllable count.
+
+In the viewer, `setupAudio` only shows the player when the verse has both an
+audio file and timings; otherwise the page behaves exactly as before.
+
+### Two things that had to be fixed to make playback work
+
+**Seeking needs HTTP Range support.** `SimpleHTTPRequestHandler` does not
+implement it, and a browser will not seek within media served without it:
+setting `audio.currentTime` silently snapped back to 0, so the track could be
+played from the start but never scrubbed. `Handler.send_head` now serves
+`206 Partial Content` and advertises `Accept-Ranges`.
+
+**`timeupdate` does not fire on a paused element.** Scrubbing a paused track left
+the highlight where it was, so the viewer also listens for `seeked` and
+`loadedmetadata`.
+
+The highlight lookup is a binary search over the syllables sorted by start time.
+`timeupdate` fires about four times a second and a linear scan of ~1500
+syllables each time is wasteful enough to show up on a phone.
 
 ---
 

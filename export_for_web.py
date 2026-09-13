@@ -54,7 +54,8 @@ def _group_summary(verse, chains=None) -> list[dict]:
     return groups
 
 
-def verse_to_dict(verse, artist: str, track: str, engine: str, chains=None, text: str = "") -> dict:
+def verse_to_dict(verse, artist: str, track: str, engine: str, chains=None, text: str = "",
+                  audio: str = "") -> dict:
     """Serialise a labelled verse, keeping the phonetic detail for tooltips."""
     lines = []
     for line in verse.lines:
@@ -69,6 +70,9 @@ def verse_to_dict(verse, artist: str, track: str, engine: str, chains=None, text
                         "nucleus": syl.nucleus,
                         "coda": " ".join(syl.coda),
                         "onset": " ".join(syl.onset),
+                        # Present only when an alignment was supplied.
+                        "start": syl.start,
+                        "end": syl.end,
                     }
                     for syl in word.syllables
                 ],
@@ -84,11 +88,14 @@ def verse_to_dict(verse, artist: str, track: str, engine: str, chains=None, text
         "lines": lines,
         "metrics": compute_metrics(verse),
         "groups": _group_summary(verse, chains),
+        # Empty unless --audio/--timings were given; the viewer hides its player.
+        "audio": audio,
+        "timed": any(syl.start is not None for syl in verse.syllables()),
     }
 
 
 def analyse_text(lyrics: str, artist: str, track: str, engine: str = ENGINE_SIMILARITY,
-                 min_occurrences: int = 2, tail_window=None) -> dict:
+                 min_occurrences: int = 2, tail_window=None, timings=None, audio: str = "") -> dict:
     """Run the pipeline over raw lyrics and return the viewer payload."""
     verse = process_verse(lyrics, artist=artist)
     chains = None
@@ -98,7 +105,14 @@ def analyse_text(lyrics: str, artist: str, track: str, engine: str = ENGINE_SIMI
         chains = assign_chain_labels(verse, min_occurrences=min_occurrences)
     else:
         label_verse(verse, engine=engine, min_occurrences=min_occurrences, tail_window=tail_window)
-    return verse_to_dict(verse, artist, track, engine, chains, text=lyrics)
+
+    if timings:
+        from src.timing import attach_timings, timing_coverage
+
+        matched = attach_timings(verse, timings)
+        print(f"  timings: matched {matched} words ({timing_coverage(verse):.0%} of the verse)")
+
+    return verse_to_dict(verse, artist, track, engine, chains, text=lyrics, audio=audio)
 
 
 def build(csv_path: str, limit, min_occurrences: int, tail_window, engine: str) -> list[dict]:
@@ -122,7 +136,21 @@ def main(argv=None) -> int:
     parser.add_argument("--tail-window", type=int, default=None, help="only label the last N syllables per line")
     parser.add_argument("--engine", "-e", default=ENGINE_SIMILARITY, choices=ENGINE_CHOICES, help="rhyme engine")
     parser.add_argument("--demo", action="store_true", help="also include dataset/demo_rap_god.txt")
+    parser.add_argument("--timings", type=Path, default=None,
+                        help="word-timing file (JSON, VTT/SRT or Audacity labels) for karaoke playback")
+    parser.add_argument("--audio", default="", help="audio filename inside web/ to play alongside")
     args = parser.parse_args(argv)
+
+    timings = None
+    if args.timings:
+        from src.timing import TimingError, load_timings
+
+        try:
+            timings = load_timings(args.timings)
+            print(f"loaded {len(timings)} word timings from {args.timings}")
+        except TimingError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
 
     try:
         verses = build(args.input, args.limit, args.min_occurrences, args.tail_window, args.engine)
@@ -133,7 +161,8 @@ def main(argv=None) -> int:
     demo = PROJECT_ROOT / "dataset" / "demo_rap_god.txt"
     if args.demo and demo.exists():
         verses.insert(0, analyse_text(demo.read_text(encoding="utf-8"), "Eminem",
-                                      "Rap God (full verse)", args.engine, args.min_occurrences))
+                                      "Rap God (full verse)", args.engine, args.min_occurrences,
+                                      timings=timings, audio=args.audio))
 
     if not verses:
         print(f"error: nothing to export from {args.input}", file=sys.stderr)

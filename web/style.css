@@ -66,7 +66,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible {
 /* An id or class selector that sets `display` outranks the browser's
  * `[hidden] { display: none }`, so a hidden element stays visible. These two
  * rules restore it; without them the paste panel was open on first load. */
-#pastePanel[hidden], .stats[hidden] { display: none; }
+#pastePanel[hidden], .stats[hidden], .player[hidden] { display: none; }
 
 #pastePanel {
   background: var(--surface);
@@ -80,6 +80,28 @@ button:focus-visible, select:focus-visible, textarea:focus-visible {
 .paste-actions { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
 #pasteStatus { color: var(--muted); font-size: 0.85rem; }
 #pasteStatus.error { color: #ff7b72; }
+
+/* ---------- audio player ---------- */
+
+.player {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.player audio { height: 34px; flex: 1 1 280px; max-width: 520px; }
+.player-note { color: var(--muted); font-size: 0.78rem; }
+
+/* The syllable currently being sung. */
+.syllable.playing {
+  box-shadow: 0 0 0 2px var(--accent), 0 0 12px 2px rgba(255, 159, 67, 0.45);
+  filter: brightness(1.25);
+  position: relative;
+  z-index: 2;
+}
 
 /* ---------- stats ---------- */
 

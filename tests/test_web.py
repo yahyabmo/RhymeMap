@@ -26,8 +26,9 @@ LYRICS = ("His palms are sweaty, knees weak, arms are heavy\n"
           "He is nervous but on the surface he looks calm and ready")
 
 # Keys web/app.js reads. Adding one here means updating the page too.
-VERSE_KEYS = {"artist", "track", "engine", "text", "lines", "metrics", "groups"}
-SYLLABLE_KEYS = {"text", "label", "nucleus", "coda", "onset"}
+VERSE_KEYS = {"artist", "track", "engine", "text", "lines", "metrics", "groups",
+              "audio", "timed"}
+SYLLABLE_KEYS = {"text", "label", "nucleus", "coda", "onset", "start", "end"}
 GROUP_KEYS = {"label", "syllables", "length", "occurrences", "similarity", "strength"}
 
 
@@ -164,6 +165,43 @@ class TestServer(unittest.TestCase):
         status, payload = self.post({"lyrics": "la la la\n" * 40000})
         self.assertEqual(status, 413)
         self.assertIn("error", payload)
+
+    def test_range_request_returns_partial_content(self):
+        """Browsers refuse to seek in media served without byte ranges."""
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/style.css",
+            headers={"Range": "bytes=10-19"})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = response.read()
+            self.assertEqual(response.status, 206)
+            self.assertEqual(len(body), 10)
+            self.assertTrue(response.headers["Content-Range"].startswith("bytes 10-19/"))
+
+    def test_suffix_range(self):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/style.css", headers={"Range": "bytes=-5"})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            self.assertEqual(response.status, 206)
+            self.assertEqual(len(response.read()), 5)
+
+    def test_open_ended_range(self):
+        full = urllib.request.urlopen(f"http://127.0.0.1:{self.port}/style.css", timeout=30).read()
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/style.css", headers={"Range": "bytes=5-"})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            self.assertEqual(response.read(), full[5:])
+
+    def test_unsatisfiable_range(self):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/style.css",
+            headers={"Range": "bytes=99999999-99999999"})
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request, timeout=30)
+        self.assertEqual(caught.exception.code, 416)
+
+    def test_accept_ranges_is_advertised(self):
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/style.css", timeout=30) as response:
+            self.assertEqual(response.headers["Accept-Ranges"], "bytes")
 
     def test_serves_the_page(self):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/", timeout=30) as response:

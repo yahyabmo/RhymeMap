@@ -22,6 +22,8 @@ const els = {
   lyricsInput: document.getElementById('lyricsInput'),
   analyseBtn: document.getElementById('analyseBtn'),
   dimToggle: document.getElementById('dimToggle'),
+  player: document.getElementById('player'),
+  audio: document.getElementById('audio'),
 };
 
 let current = null;
@@ -81,6 +83,10 @@ function renderLyrics(verse) {
         if (syl.label) {
           el.style.backgroundColor = colourFor(syl.label);
           el.dataset.label = syl.label;
+        }
+        if (syl.start !== null && syl.start !== undefined) {
+          el.dataset.start = syl.start;
+          el.dataset.end = syl.end;
         }
         el.dataset.nucleus = syl.nucleus || '';
         el.dataset.coda = syl.coda || '';
@@ -157,6 +163,66 @@ function show(verse) {
   renderLyrics(verse);
   renderGroups(verse);
   applyIsolation();
+  setupAudio(verse);
+}
+
+/* ---------- karaoke playback ----------
+ *
+ * Only shown when the verse carries both an audio file and word timings.
+ * Everything else works identically without them. */
+
+let timedSyllables = [];
+let playing = null;
+
+function setupAudio(verse) {
+  timedSyllables = [];
+  playing = null;
+  clearPlaying();
+
+  if (!verse.audio || !verse.timed) {
+    els.player.hidden = true;
+    els.audio.removeAttribute('src');
+    return;
+  }
+
+  timedSyllables = Array.from(els.lyrics.querySelectorAll('.syllable[data-start]'))
+    .map((el) => ({ el, start: parseFloat(el.dataset.start), end: parseFloat(el.dataset.end) }))
+    .sort((a, b) => a.start - b.start);
+
+  els.audio.src = verse.audio;
+  els.player.hidden = false;
+}
+
+function clearPlaying() {
+  if (playing) {
+    playing.el.classList.remove('playing');
+    playing = null;
+  }
+}
+
+function highlightAt(time) {
+  /* Binary search for the syllable covering `time`. timeupdate fires about four
+   * times a second, and a linear scan over ~1500 syllables each time is wasteful
+   * enough to be visible on a phone. */
+  let low = 0;
+  let high = timedSyllables.length - 1;
+  let found = null;
+
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const item = timedSyllables[mid];
+    if (time < item.start) high = mid - 1;
+    else if (time > item.end) low = mid + 1;
+    else { found = item; break; }
+  }
+
+  if (found === playing) return;
+  clearPlaying();
+  if (found) {
+    found.el.classList.add('playing');
+    found.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  playing = found;
 }
 
 /* ---------- interaction ---------- */
@@ -370,6 +436,15 @@ function init() {
   els.lyricsInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) analyse();
   });
+
+  /* `timeupdate` only fires while the media is actually advancing, so scrubbing
+   * a paused track left the highlight where it was. `seeked` covers that. */
+  ['timeupdate', 'seeked', 'loadedmetadata'].forEach((event) => {
+    els.audio.addEventListener(event, () => {
+      if (timedSyllables.length) highlightAt(els.audio.currentTime);
+    });
+  });
+  els.audio.addEventListener('ended', clearPlaying);
 
   els.dimToggle.addEventListener('click', () => {
     const on = document.body.classList.toggle('dim');

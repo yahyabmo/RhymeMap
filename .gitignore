@@ -215,3 +215,7 @@ dataset
 .cache/
 web/data.js
 data/stats.csv
+web/*.wav
+web/*.mp3
+web/*.m4a
+web/*.ogg

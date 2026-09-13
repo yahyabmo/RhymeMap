@@ -105,3 +105,47 @@ audit found.
 - Syllables now carry their `onset` and their position in the verse.
 - Code and docstrings standardised on English.
 - `web/data.js`, `data/stats.csv` and `.cache/` are generated, and no longer tracked.
+
+## v3.0 (2026-09-13) – Similarity engine, chains, evaluation, viewer, audio
+
+### The engine is now a similarity metric, not a string comparison
+- `src/phonology.py` places every ARPAbet phoneme in an articulatory feature
+  space: vowels by height, backness, rounding, tenseness, offglide and
+  r-colouring; consonants by place, manner and voicing. Codas are compared by a
+  Levenshtein alignment whose substitution cost is the feature distance between
+  two consonants.
+- `src/similarity.py` scores a syllable pair in [0, 1] and clusters on it.
+  An identical onset scales the score down: identical onset plus identical rime
+  is repetition, not rhyme, and a rime-only score rates "cat"/"cat" a perfect 1.
+- `src/chains.py` finds repeated multisyllabic spans, so
+  "levitatin' / devastatin' / ricochetin'" surfaces as one five-syllable chain
+  instead of fifteen unrelated syllables.
+
+### It is measured, not asserted
+- `eval/` holds a 13-verse gold set, a scorer (pairwise and B-cubed), an
+  ablation runner and a parameter sweep. `make eval` regenerates everything.
+- The similarity engine beats the v1 baseline: pairwise F1 0.648 -> 0.865.
+- The chain engine scores **worse** than the baseline at line-final grouping
+  (0.454). It has the highest precision and the lowest recall of any
+  configuration: it answers a different question. Kept in the table, and
+  `similarity` is the default because of it.
+- Metrics alone do **not** identify the artist: every classifier lands at or
+  below chance and no metric separates artists (ANOVA p = 0.29-0.96). The
+  artist-similarity and dendrogram figures draw structure this corpus cannot
+  support.
+- Annotations are model-made to a documented protocol, and the gold file says so.
+
+### Viewer
+- Hover traces a rhyme group across the verse; the sidebar isolates one on click;
+  the engine selector re-analyses the verse live. Colours are hashed from the
+  label, so the 26-class CSS limit is gone (Rap God has 56 groups, or 257 under
+  the chain engine).
+- Paste-your-own-lyrics through a stdlib local server. Analysis stays in Python
+  so the browser and the terminal cannot disagree about what rhymes.
+
+### Audio
+- Word timings from JSON, WebVTT/SRT or Audacity labels drive karaoke-style
+  playback. Forced alignment stays optional and uninstalled.
+
+### Engineering
+- 227 tests, up from 15. ruff clean. CI runs tests, lint and the full pipeline.

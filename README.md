@@ -88,6 +88,29 @@ drift from the Python one — and then the browser and the terminal would disagr
 about what rhymes. The static page still works with no server; only the paste box
 and engine switching need it.
 
+## Playing it against the audio
+
+Give the viewer word timings and it highlights each rhyme in time with the track.
+
+```bash
+# 1. produce word timings (any of these work)
+python -m scripts.align_audio --audio track.mp3 --lyrics verse.txt -o timings.json
+#    ...or export labels from Audacity, or write the JSON by hand:
+#    [{"word": "palms", "start": 0.51, "end": 0.78}, ...]
+
+# 2. put the audio in web/ and export with the timings
+cp track.mp3 web/
+make karaoke AUDIO=track.mp3 TIMINGS=timings.json
+```
+
+Forced alignment is deliberately **not** a dependency. Every aligner is heavy —
+WhisperX pulls in torch, aeneas needs espeak and ffmpeg — so `scripts/align_audio.py`
+uses whichever is installed and explains the options when neither is. Nothing in
+`src/` imports them. WebVTT, SRT and Audacity label tracks are read directly, so
+you can skip aligners entirely and label the words by hand.
+
+Without timings the player is hidden and everything else behaves identically.
+
 ## Does it work?
 
 `make eval` rebuilds the gold set, runs the full ablation, and regenerates
