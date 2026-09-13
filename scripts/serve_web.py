@@ -149,7 +149,8 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        if self.path.rstrip("/") != "/api/analyze":
+        route = self.path.rstrip("/")
+        if route not in {"/api/analyze", "/api/song"}:
             self._send_json({"error": "unknown endpoint"}, 404)
             return
 
@@ -171,15 +172,19 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({"error": f"invalid JSON: {exc}"}, 400)
             return
 
-        lyrics = (request.get("lyrics") or "").strip()
-        if not lyrics:
-            self._send_json({"error": "no lyrics supplied"}, 400)
-            return
-
         from src.labeling import ENGINE_CHOICES
         engine = request.get("engine") or "similarity"
         if engine not in ENGINE_CHOICES:
             self._send_json({"error": f"unknown engine {engine!r}"}, 400)
+            return
+
+        if route == "/api/song":
+            self._handle_song(request, engine)
+            return
+
+        lyrics = (request.get("lyrics") or "").strip()
+        if not lyrics:
+            self._send_json({"error": "no lyrics supplied"}, 400)
             return
 
         try:
@@ -194,6 +199,35 @@ class Handler(SimpleHTTPRequestHandler):
             )
         except Exception as exc:
             self._send_json({"error": f"{type(exc).__name__}: {exc}"}, 500)
+            return
+
+        self._send_json(payload)
+
+    def _handle_song(self, request, engine):
+        """Load a song from a link (or raw lyrics) and analyse it."""
+        from src.sources import SourceError, load
+
+        query = (request.get("url") or request.get("query") or "").strip()
+        if not query:
+            self._send_json({"error": "no link or lyrics supplied"}, 400)
+            return
+
+        try:
+            song = load(query)
+        except SourceError as exc:
+            self._send_json({"error": str(exc)}, 422)
+            return
+        except Exception as exc:
+            self._send_json({"error": f"{type(exc).__name__}: {exc}"}, 500)
+            return
+
+        try:
+            from export_for_web import analyse_song
+
+            payload = analyse_song(song, engine=engine,
+                                   min_occurrences=max(2, int(request.get("min_occurrences") or 2)))
+        except Exception as exc:
+            self._send_json({"error": f"analysis failed: {type(exc).__name__}: {exc}"}, 500)
             return
 
         self._send_json(payload)

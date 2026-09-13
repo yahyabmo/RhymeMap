@@ -55,7 +55,7 @@ def _group_summary(verse, chains=None) -> list[dict]:
 
 
 def verse_to_dict(verse, artist: str, track: str, engine: str, chains=None, text: str = "",
-                  audio: str = "") -> dict:
+                  audio: str = "", song=None) -> dict:
     """Serialise a labelled verse, keeping the phonetic detail for tooltips."""
     lines = []
     for line in verse.lines:
@@ -91,6 +91,17 @@ def verse_to_dict(verse, artist: str, track: str, engine: str, chains=None, text
         # Empty unless --audio/--timings were given; the viewer hides its player.
         "audio": audio,
         "timed": any(syl.start is not None for syl in verse.syllables()),
+        # Present for songs loaded from a link: lets the viewer embed the
+        # original player and show where the lyrics came from.
+        "source": {
+            "kind": song.source,
+            "video_id": song.video_id,
+            "url": song.url,
+            "thumbnail": song.thumbnail,
+            "duration": song.duration,
+            "captions": song.caption_kind,
+            "language": song.language,
+        } if song is not None else None,
     }
 
 
@@ -113,6 +124,27 @@ def analyse_text(lyrics: str, artist: str, track: str, engine: str = ENGINE_SIMI
         print(f"  timings: matched {matched} words ({timing_coverage(verse):.0%} of the verse)")
 
     return verse_to_dict(verse, artist, track, engine, chains, text=lyrics, audio=audio)
+
+
+def analyse_song(song, engine: str = ENGINE_SIMILARITY, min_occurrences: int = 2,
+                 tail_window=None) -> dict:
+    """Analyse a Song from src.sources, keeping its provenance in the payload."""
+    verse = process_verse(song.lyrics, artist=song.artist)
+    chains = None
+    if engine == "chains":
+        from src.chains import assign_chain_labels
+
+        chains = assign_chain_labels(verse, min_occurrences=min_occurrences)
+    else:
+        label_verse(verse, engine=engine, min_occurrences=min_occurrences, tail_window=tail_window)
+
+    if song.timings:
+        from src.timing import attach_timings
+
+        attach_timings(verse, song.timings)
+
+    return verse_to_dict(verse, song.artist, song.title, engine, chains,
+                         text=song.lyrics, song=song)
 
 
 def build(csv_path: str, limit, min_occurrences: int, tail_window, engine: str) -> list[dict]:

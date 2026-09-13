@@ -10,3 +10,6 @@ matplotlib
 seaborn
 scikit-learn
 scipy            # hierarchical clustering for the artist dendrogram
+
+# Song ingestion
+yt-dlp          # reads YouTube captions for lyrics + word timings

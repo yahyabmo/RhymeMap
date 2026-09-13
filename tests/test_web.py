@@ -27,7 +27,7 @@ LYRICS = ("His palms are sweaty, knees weak, arms are heavy\n"
 
 # Keys web/app.js reads. Adding one here means updating the page too.
 VERSE_KEYS = {"artist", "track", "engine", "text", "lines", "metrics", "groups",
-              "audio", "timed"}
+              "audio", "timed", "source"}
 SYLLABLE_KEYS = {"text", "label", "nucleus", "coda", "onset", "start", "end"}
 GROUP_KEYS = {"label", "syllables", "length", "occurrences", "similarity", "strength"}
 
@@ -202,6 +202,23 @@ class TestServer(unittest.TestCase):
     def test_accept_ranges_is_advertised(self):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/style.css", timeout=30) as response:
             self.assertEqual(response.headers["Accept-Ranges"], "bytes")
+
+    def test_song_endpoint_accepts_lyrics(self):
+        status, payload = self.post({"url": LYRICS, "engine": "similarity"}, path="/api/song")
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["source"]["kind"], "text")
+        self.assertGreater(payload["metrics"]["syllables"], 0)
+
+    def test_song_endpoint_rejects_empty(self):
+        status, payload = self.post({"url": "  "}, path="/api/song")
+        self.assertEqual(status, 400)
+        self.assertIn("error", payload)
+
+    def test_song_endpoint_reports_a_bad_link(self):
+        """A non-YouTube URL is treated as lyrics, so a bare domain is one line."""
+        status, payload = self.post({"url": "https://vimeo.com/12345"}, path="/api/song")
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["source"]["kind"], "text")
 
     def test_serves_the_page(self):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/", timeout=30) as response:
