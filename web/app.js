@@ -12,7 +12,8 @@ const verses = typeof rhymeData !== 'undefined' ? rhymeData.slice() : [];
 
 const el = (id) => document.getElementById(id);
 const ui = {
-  aurora: el('aurora'), grain: el('grain'),
+  aurora: el('aurora'), grain: el('grain'), waves: el('waves'), progress: el('progress'),
+  rotatingWord: el('rotatingWord'),
   form: el('linkForm'), input: el('linkInput'), analyse: el('analyseBtn'),
   status: el('status'), pasteToggle: el('pasteToggle'), pastePanel: el('pastePanel'),
   lyricsInput: el('lyricsInput'), analysePaste: el('analysePasteBtn'), demo: el('demoBtn'),
@@ -28,6 +29,7 @@ const ui = {
 let current = null;
 let isolated = null;
 let auroraHandle = null;
+let wavesHandle = null;
 let stopStatusAnimation = null;
 
 /* ------------------------------------------------------------- palette -- */
@@ -74,6 +76,7 @@ function renderStats(verse) {
       `<div class="stat"><span class="stat-value">0</span><span class="stat-name">${name}</span></div>`).join('');
   }
   ui.stats.querySelectorAll('.stat').forEach((node, i) => {
+    if (!node.classList.contains('has-glare')) { Effects.glare(node); Effects.tilt(node); }
     const [name, value, suffix, decimals] = cells[i];
     node.querySelector('.stat-name').textContent = name;
     Effects.countUp(node.querySelector('.stat-value'), value, { suffix, decimals });
@@ -195,11 +198,17 @@ function show(verse) {
   setupPlayback(verse);
   Effects.revealOnScroll();
 
-  // Aurora energy tracks how densely the verse rhymes.
+  // Both background fields read the analysis: the denser the verse, the more
+  // energy in the aurora and the more swell in the waves.
+  const density = (verse.metrics?.density ?? 0) / 100;
+  const strongest = (verse.groups || [])[0];
   if (auroraHandle) {
-    auroraHandle.setEnergy(0.22 + ((verse.metrics?.density ?? 0) / 100) * 0.6);
-    const strongest = (verse.groups || [])[0];
+    auroraHandle.setEnergy(0.22 + density * 0.6);
     if (strongest) auroraHandle.setHue(hueFor(strongest.label) * 0.35);
+  }
+  if (wavesHandle) {
+    wavesHandle.setLevel(0.14 + density * 0.5);
+    if (strongest) wavesHandle.setHue(hueFor(strongest.label));
   }
 }
 
@@ -359,8 +368,13 @@ function highlightAt(time) {
     found.node.classList.add('playing');
     found.node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     playing = found;
-    if (auroraHandle && found.node.dataset.label) {
-      auroraHandle.setHue(hueFor(found.node.dataset.label) * 0.4);
+    const label = found.node.dataset.label;
+    if (label) {
+      const hue = hueFor(label);
+      if (auroraHandle) auroraHandle.setHue(hue * 0.4);
+      if (wavesHandle) { wavesHandle.setHue(hue); wavesHandle.setLevel(0.72); }
+    } else if (wavesHandle) {
+      wavesHandle.setLevel(0.22);
     }
   }
 }
@@ -443,7 +457,7 @@ async function reanalyseCurrent() {
     // Re-analysis loses provenance, so carry it across.
     payload.source = current.source;
     if (index >= 0) verses[index] = payload;
-    show(payload);
+    Effects.swap(() => show(payload));
     setStatus(`${payload.engine}: ${payload.metrics.density}% density, ${payload.metrics.signatures} groups.`);
   } catch (error) {
     setStatus(String(error.message || error), 'error');
@@ -467,11 +481,21 @@ function init() {
   document.body.classList.add('dim');
 
   auroraHandle = Effects.aurora(ui.aurora);
+  wavesHandle = Effects.waves(ui.waves);
   Effects.noise(ui.grain);
   Effects.splitText(ui.heroTitle);
   Effects.clickSpark(document.body);
   Effects.magnet(ui.analyse);
+  Effects.scrollProgress(ui.progress);
+  Effects.rotatingText(ui.rotatingWord, [
+    'multisyllabic chains',
+    'slant rhymes',
+    'internal rhyme',
+    'assonance',
+  ]);
   document.querySelectorAll('.panel').forEach(Effects.spotlight);
+  document.querySelectorAll('.stat').forEach((node) => { Effects.glare(node); Effects.tilt(node); });
+  ui.lyrics.classList.add('fade-foot');
   Effects.revealOnScroll();
 
   ui.form.addEventListener('submit', (event) => {
@@ -540,6 +564,11 @@ function init() {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && isolated) toggleIsolate(isolated);
   });
+
+  window.addEventListener('scroll', () => {
+    const box = ui.lyrics.getBoundingClientRect();
+    ui.lyrics.style.setProperty('--foot-on', box.bottom < window.innerHeight + 40 ? '0' : '1');
+  }, { passive: true });
 
   if (verses.length) {
     populateTracks();

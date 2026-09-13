@@ -68,8 +68,14 @@ const Effects = (() => {
     let targetEnergy = 0.40;
     let hueShift = 0, targetHue = 0;
 
+    // The aurora is nothing but low-frequency gradient, so it renders at a
+    // fraction of its display size and the browser's upscaling blurs it for
+    // free. This replaced a full-viewport `filter: blur()` that was measured
+    // costing 17fps on its own.
+    const SCALE = 0.14;
+
     function resize() {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      dpr = SCALE;
       width = canvas.clientWidth;
       height = canvas.clientHeight;
       canvas.width = Math.max(1, Math.floor(width * dpr));
@@ -321,9 +327,173 @@ const Effects = (() => {
     targets.forEach((el) => observer.observe(el));
   }
 
+
+  /* ---------- Waves ----------
+   *
+   * A field of horizontal lines that ripple left to right. This is the one
+   * effect that exists because the subject is music: it reads as a waveform,
+   * and it is driven by playback position and the rhyme density around it, so
+   * it swells where the verse is dense and settles where it thins.
+   */
+
+  function waves(canvas, { lines = 11, amplitude = 16 } = {}) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return { destroy() {}, setLevel() {}, setHue() {} };
+
+    let width = 0, height = 0, dpr = 1;
+    let level = 0.18, targetLevel = 0.18;
+    let hue = 28, targetHue = 28;
+
+    // Half resolution: these are soft 1px strokes behind content, and the
+    // upscale is not perceptible.
+    function resize() {
+      dpr = 0.5;
+      width = canvas.clientWidth;
+      height = canvas.clientHeight;
+      canvas.width = Math.max(1, Math.floor(width * dpr));
+      canvas.height = Math.max(1, Math.floor(height * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function paint(now) {
+      ctx.clearRect(0, 0, width, height);
+      level += (targetLevel - level) * 0.08;
+      hue += (targetHue - hue) * 0.04;
+
+      const t = prefersReducedMotion() ? 0 : now / 1000;
+      for (let i = 0; i < lines; i++) {
+        const progress = i / (lines - 1);
+        const y = height * (0.12 + progress * 0.76);
+        const swell = amplitude * (0.35 + level * 1.5) * (1 - Math.abs(progress - 0.5) * 0.9);
+
+        ctx.beginPath();
+        for (let x = 0; x <= width; x += 14) {
+          const phase = x / width * Math.PI * 3 + t * (0.5 + progress * 0.5) + i * 0.55;
+          const offset = Math.sin(phase) * swell + Math.sin(phase * 2.3 + t * 0.7) * swell * 0.3;
+          if (x === 0) ctx.moveTo(x, y + offset);
+          else ctx.lineTo(x, y + offset);
+        }
+        // Fading here rather than with a CSS `mask-image`: masking the layer
+        // cost 5fps, and the alpha is already being computed per line.
+        const fade = Math.min(1, progress * 1.6);
+        ctx.strokeStyle =
+          `hsla(${(hue + progress * 44) % 360}, 78%, 62%, ${(0.05 + level * 0.18) * fade})`;
+        ctx.lineWidth = 1.1;
+        ctx.stroke();
+      }
+    }
+
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(canvas);
+    const stop = addTask(paint);
+
+    return {
+      setLevel(value) { targetLevel = Math.max(0, Math.min(1, value)); },
+      setHue(value) { targetHue = value; },
+      destroy() { stop(); observer.disconnect(); },
+    };
+  }
+
+  /* ---------- RotatingText ----------
+   * Cycles a word in place. Used in the hero to name several things the tool
+   * finds, which says more than any single noun would. */
+
+  function rotatingText(element, words, { interval = 2400 } = {}) {
+    if (!words.length) return () => {};
+    let index = 0;
+
+    const render = (word) => {
+      element.textContent = word;
+      if (prefersReducedMotion()) return;
+      element.classList.remove('is-rotating');
+      void element.offsetWidth;       // restart the animation
+      element.classList.add('is-rotating');
+    };
+
+    render(words[0]);
+    if (prefersReducedMotion() || words.length === 1) return () => {};
+
+    const timer = setInterval(() => {
+      index = (index + 1) % words.length;
+      render(words[index]);
+    }, interval);
+    return () => clearInterval(timer);
+  }
+
+  /* ---------- GlareHover ----------
+   * A diagonal sheen that tracks the cursor across a tile. */
+
+  function glare(element) {
+    element.classList.add('has-glare');
+    element.addEventListener('pointermove', (event) => {
+      const box = element.getBoundingClientRect();
+      element.style.setProperty('--glare-x', `${((event.clientX - box.left) / box.width) * 100}%`);
+      element.style.setProperty('--glare-y', `${((event.clientY - box.top) / box.height) * 100}%`);
+      element.style.setProperty('--glare-on', '1');
+    });
+    element.addEventListener('pointerleave', () => element.style.setProperty('--glare-on', '0'));
+  }
+
+  /* ---------- Tilt ----------
+   * A few degrees of rotation towards the cursor. Kept small: a data panel that
+   * pitches about is harder to read, not nicer. */
+
+  function tilt(element, { max = 4 } = {}) {
+    if (prefersReducedMotion()) return;
+    let raf = 0;
+
+    element.addEventListener('pointermove', (event) => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const box = element.getBoundingClientRect();
+        const px = (event.clientX - box.left) / box.width - 0.5;
+        const py = (event.clientY - box.top) / box.height - 0.5;
+        element.style.transform =
+          `perspective(900px) rotateX(${(-py * max).toFixed(2)}deg) rotateY(${(px * max).toFixed(2)}deg)`;
+      });
+    });
+    element.addEventListener('pointerleave', () => {
+      cancelAnimationFrame(raf);
+      element.style.transform = '';
+    });
+  }
+
+  /* Inertial ("smooth") scrolling is deliberately NOT implemented.
+   *
+   * The usual technique pins the content with `position: fixed` and translates
+   * it towards the real scroll offset. Inside a fixed, transformed container
+   * `position: sticky` stops resolving against the viewport -- and this page
+   * relies on sticky for both the masthead and the sidebar, so the trade is a
+   * slightly smoother wheel in exchange for two broken layout behaviours.
+   *
+   * The fluency worth having came from making each frame cheap instead; see the
+   * resolution note in `aurora`. */
+
+  /* ---------- scroll progress ---------- */
+
+  function scrollProgress(bar) {
+    const update = () => {
+      const max = document.body.scrollHeight - window.innerHeight;
+      bar.style.transform = `scaleX(${max > 0 ? Math.min(1, window.scrollY / max) : 0})`;
+    };
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    update();
+  }
+
+  /* ---------- view transitions ----------
+   * Cross-fades a DOM swap where the browser supports it. */
+
+  function swap(update) {
+    if (prefersReducedMotion() || !document.startViewTransition) { update(); return; }
+    document.startViewTransition(update);
+  }
+
   return {
     prefersReducedMotion, aurora, noise, splitText, countUp,
     clickSpark, magnet, spotlight, scramble, scrambleLoop, revealOnScroll,
+    waves, rotatingText, glare, tilt, scrollProgress, swap,
   };
 })();
 

@@ -84,6 +84,68 @@ body {
 
 /* ------------------------------------------------------------ atmosphere -- */
 
+#waves {
+  position: fixed;
+  inset: auto 0 0 0;
+  height: 46vh;
+  width: 100%;
+  z-index: -2;
+  pointer-events: none;
+  opacity: .85;
+}
+
+/* Scroll progress: the one piece of chrome that earns a fixed position. */
+#progress {
+  position: fixed;
+  top: 0; left: 0;
+  z-index: 60;
+  height: 2px;
+  width: 100%;
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  background: var(--accent-gradient);
+  pointer-events: none;
+}
+
+/* GlareHover: a sheen tracking the cursor across a tile. */
+.has-glare { position: relative; overflow: hidden; }
+.has-glare::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--glare-on, 0);
+  transition: opacity var(--t-base);
+  background: radial-gradient(180px circle at var(--glare-x, 50%) var(--glare-y, 50%),
+    rgba(255, 255, 255, .09), transparent 72%);
+}
+
+/* RotatingText */
+.rotating {
+  display: inline-block;
+  color: var(--flame);
+  font-weight: 500;
+}
+.rotating.is-rotating { animation: rotate-in .5s var(--ease-out); }
+@keyframes rotate-in {
+  from { opacity: 0; transform: translateY(.42em) rotateX(-40deg); filter: blur(5px); }
+  to   { opacity: 1; transform: none; filter: blur(0); }
+}
+
+/* GradualBlur: fades the foot of a long panel so it reads as continuing
+ * rather than as cut off. Functional, not decorative. */
+.fade-foot { position: relative; }
+.fade-foot::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 90px;
+  pointer-events: none;
+  background: linear-gradient(to top, var(--surface), transparent);
+  opacity: var(--foot-on, 1);
+  transition: opacity var(--t-base);
+}
+
 #aurora, #grain {
   position: fixed;
   inset: 0;
@@ -93,8 +155,14 @@ body {
   width: 100%;
   height: 100%;
 }
-#aurora { z-index: -2; filter: blur(80px) saturate(130%); }
-#grain { z-index: -1; mix-blend-mode: overlay; background-repeat: repeat; }
+/* No filter. The canvas renders at a fraction of its display size and the
+ * browser's own upscaling does the blurring for free; a CSS blur over the
+ * viewport cost 17fps for a result that is not distinguishable. */
+#aurora { z-index: -2; }
+/* No mix-blend-mode here. Blending a fixed full-viewport layer forced the
+ * compositor to re-blend the whole screen on every animated frame, measured at
+ * 22fps of the budget. At this opacity a plain overlay looks the same. */
+#grain { z-index: -1; background-repeat: repeat; }
 
 /* A vignette keeps the aurora from washing out text at the edges. */
 body::after {
@@ -419,6 +487,8 @@ body::after {
   margin-bottom: var(--gap-lg);
 }
 .stat {
+  transform-style: preserve-3d;
+  transition: transform var(--t-base) var(--ease-out);
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
