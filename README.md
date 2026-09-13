@@ -11,14 +11,6 @@ that can be compared across tracks and artists.
 make install        # dependencies + the NLTK corpora g2p_en needs
 ```
 
-`g2p_en` depends on `distance`, which fails to build against setuptools 60+. If
-`make install` trips on it:
-
-```bash
-pip install "setuptools<60" && pip install --no-build-isolation distance
-pip install --upgrade setuptools && make install
-```
-
 ## Use
 
 ```bash
