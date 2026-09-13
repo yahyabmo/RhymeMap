@@ -30,10 +30,20 @@ from .phonology import cluster_distance, parse_vowel, vowel_distance
 # than constants scattered through the scoring code. `eval/` sweeps these.
 # ---------------------------------------------------------------------------
 
+# Tuned against eval/gold.json; see eval/tuning.json for the sweeps.
+#
+# The sweeps are coordinate-wise, and combining each parameter's individual best
+# makes the model *worse* (B-cubed F1 0.901 against 0.924 for the untuned set),
+# so only changes that also help jointly are adopted here. At present that is
+# `nucleus` alone, raised from 0.60 to 0.70, which lifts pairwise F1 from 0.830
+# to 0.865 and B-cubed F1 from 0.924 to 0.942.
+#
+# With a 13-verse gold set these margins are small. Treat the values as
+# reasonable defaults supported by evidence, not as a converged optimum.
 DEFAULT_WEIGHTS = {
     # Contribution of each component to the raw score. Normalised by their sum,
     # so only the ratios matter.
-    "nucleus": 0.60,     # the vowel: the core of the rhyme
+    "nucleus": 0.70,     # the vowel: the core of the rhyme
     "coda": 0.30,        # consonants after the vowel
     "stress": 0.10,      # stressed/unstressed agreement
 

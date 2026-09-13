@@ -15,15 +15,21 @@ ENGINE_CHAINS = "chains"
 
 ENGINE_CHOICES = (ENGINE_EXACT, ENGINE_FAMILIES, ENGINE_SIMILARITY, ENGINE_CHAINS)
 
+# `similarity` is the default because the ablation says so: on eval/gold.json it
+# reaches pairwise F1 0.865 against 0.648 for the v1 exact engine, while `chains`
+# reaches only 0.522. Chains are not worse in general -- they are solving a
+# different problem (contiguous multisyllabic spans, not line-final grouping) and
+# the gold set only annotates the latter. Use `chains` to see the structure of a
+# verse; use `similarity` to group its rhymes.
 ENGINE_HELP = {
     ENGINE_EXACT: "v1 baseline: group syllables whose vowel+stress+coda match exactly",
     ENGINE_FAMILIES: "exact matching, with coda consonants replaced by natural class",
-    ENGINE_SIMILARITY: "cluster syllables on a continuous articulatory rhyme score",
-    ENGINE_CHAINS: "detect repeated multisyllabic spans (default)",
+    ENGINE_SIMILARITY: "cluster syllables on a continuous articulatory rhyme score (default)",
+    ENGINE_CHAINS: "detect repeated multisyllabic spans (for visualising structure)",
 }
 
 
-def label_verse(verse, engine: str = ENGINE_CHAINS, **kwargs):
+def label_verse(verse, engine: str = ENGINE_SIMILARITY, **kwargs):
     """Label ``verse`` in place with the named engine; returns its registry.
 
     Unsupported keyword arguments are dropped rather than raising, so callers

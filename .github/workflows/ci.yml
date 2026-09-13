@@ -54,3 +54,5 @@ jobs:
           python -m scripts.generate_stats --quiet
           python -m analysis.run_all_plots
           python -m src.main --no-dataset
+          python -m eval.build_gold
+          python -m eval.ablation

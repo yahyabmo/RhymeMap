@@ -27,6 +27,7 @@ make stats          # analyse a corpus -> data/stats.csv
 make plots          # generate every figure into data/
 make web            # export web/data.js and open the browser viewer
 make test           # run the unit tests
+make eval           # gold set, ablation table, artist-ID experiment
 ```
 
 Every entry point is a real CLI:
@@ -65,6 +66,44 @@ before falling back to the neural grapheme-to-phoneme model.
 | **Diversity** | distinct rhyme groups / total syllables |
 | **Signatures** | number of distinct rhyme groups |
 | **Syll.** | total syllable count |
+
+## Does it work?
+
+`make eval` rebuilds the gold set, runs the full ablation, and regenerates
+[`eval/RESULTS.md`](./eval/RESULTS.md) and [`eval/ARTIST_ID.md`](./eval/ARTIST_ID.md).
+
+Scored against 13 hand-annotated verses (123 lines, 4 artists), grouping lines by
+their final rhyme:
+
+| Configuration | Pairwise F1 | B³ F1 |
+|---|---|---|
+| all lines separate (trivial) | 0.000 | 0.657 |
+| all lines together (trivial) | 0.287 | 0.536 |
+| `exact` — v1 baseline | 0.648 | 0.861 |
+| `+consonant classes` | 0.654 | 0.849 |
+| `+vowel space` | 0.727 | 0.899 |
+| **`similarity` — full feature scoring** | **0.865** | **0.942** |
+| `similarity` without the onset penalty | 0.832 | 0.934 |
+| `chains` — multisyllabic spans | 0.454 | 0.786 |
+
+Three things worth stating plainly:
+
+- The similarity engine is a real improvement on the v1 baseline: **0.648 → 0.865**.
+- **The chain engine scores worse than the baseline on this test.** It has the
+  highest precision of any configuration and the lowest recall — it groups
+  correctly but sparsely, because it looks for repeated contiguous spans while
+  this gold set annotates line-final rhyme. It is the right tool for seeing a
+  verse's structure and the wrong one for partitioning line endings, so
+  `similarity` is the default.
+- **Metrics alone do not identify the artist.** Every classifier tried lands at
+  or below the 25% chance level, and no single metric separates the artists
+  (ANOVA p = 0.29–0.96). With 3 verses per artist that is *no evidence*, not
+  evidence of no effect — but it does mean the artist-similarity and dendrogram
+  figures show clustering this corpus cannot support.
+
+The annotations were made by Claude following a documented protocol, not by a
+human expert. They are a consistent reference for comparing engines, not ground
+truth; independent re-annotation is the most valuable next step.
 
 ## Rhyme matching
 

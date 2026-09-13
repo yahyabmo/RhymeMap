@@ -1,6 +1,6 @@
 # RhymeMapper
 
-.PHONY: help install test stats plots demo web clean all
+.PHONY: help install test stats plots demo web eval gold tune clean all
 
 PYTHON = python3
 DATA_DIR = data
@@ -14,6 +14,8 @@ help:
 	@echo "  make stats     Analyse a corpus -> $(DATA_DIR)/stats.csv"
 	@echo "  make plots     Generate all figures into $(DATA_DIR)/"
 	@echo "  make web       Export web/data.js and open the viewer"
+	@echo "  make eval      Run the ablation and artist-ID experiments"
+	@echo "  make gold      Rebuild eval/gold.json from the annotations"
 	@echo "  make clean     Remove caches and generated files"
 	@echo "  make all       stats, plots, then demo"
 	@echo ""
@@ -40,6 +42,17 @@ web:
 	@echo "Opening web/index.html"
 	@$(PYTHON) -c "import pathlib, webbrowser; webbrowser.open(pathlib.Path('web/index.html').resolve().as_uri())" || \
 		echo "Could not open a browser. Open web/index.html manually."
+
+gold:
+	$(PYTHON) -m eval.build_gold
+
+eval: gold
+	$(PYTHON) -m eval.ablation
+	@echo ""
+	$(PYTHON) -m eval.artist_id
+
+tune:
+	$(PYTHON) -m eval.tune
 
 clean:
 	rm -rf .cache
