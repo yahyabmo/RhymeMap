@@ -94,13 +94,20 @@ class TestAnalyseText(unittest.TestCase):
 class TestStaticFiles(unittest.TestCase):
     def test_page_references_its_assets(self):
         html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
-        for asset in ("style.css", "app.js", "data.js"):
+        for asset in ("style.css", "app.js", "data.js", "effects.js"):
             self.assertIn(asset, html)
+
+    def test_no_enumerated_rhyme_classes(self):
+        """Colour must be generated: a verse can have hundreds of groups."""
+        css = (WEB_DIR / "style.css").read_text(encoding="utf-8")
+        self.assertNotIn(".rhyme-a", css)
+        self.assertNotIn(".rhyme-z", css)
 
     def test_required_element_ids_exist(self):
         html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
-        for element_id in ("trackSelect", "engineSelect", "lyrics", "groupList",
-                           "stats", "tooltip", "pastePanel", "analyseBtn"):
+        for element_id in ("trackSelect", "engineSelect", "lyrics", "chains", "stats",
+                           "tooltip", "pastePanel", "analyseBtn", "linkInput", "linkForm",
+                           "aurora", "grain", "status", "player"):
             self.assertIn(f'id="{element_id}"', html)
 
     def test_hidden_attribute_is_not_overridden(self):

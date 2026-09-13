@@ -1,68 +1,106 @@
 /* RhymeMapper viewer.
  *
- * Colours are derived from the group label rather than taken from a fixed list
- * of CSS classes. The old page defined .rhyme-a through .rhyme-z, which could
- * not represent a verse with more than 26 groups -- and Rap God has 56.
+ * Rhyme colour is generated from the group label rather than picked from a list
+ * of CSS classes. There is no upper bound on groups -- Rap God has 56 under the
+ * exact engine and 257 under chain detection -- so an enumerated palette cannot
+ * work, and the previous .rhyme-a ... .rhyme-z scheme silently reused colours.
  */
 
 'use strict';
 
 const verses = typeof rhymeData !== 'undefined' ? rhymeData.slice() : [];
 
-const els = {
-  track: document.getElementById('trackSelect'),
-  engine: document.getElementById('engineSelect'),
-  lyrics: document.getElementById('lyrics'),
-  groups: document.getElementById('groupList'),
-  stats: document.getElementById('stats'),
-  tooltip: document.getElementById('tooltip'),
-  pastePanel: document.getElementById('pastePanel'),
-  pasteToggle: document.getElementById('pasteToggle'),
-  pasteStatus: document.getElementById('pasteStatus'),
-  lyricsInput: document.getElementById('lyricsInput'),
-  analyseBtn: document.getElementById('analyseBtn'),
-  dimToggle: document.getElementById('dimToggle'),
-  player: document.getElementById('player'),
-  audio: document.getElementById('audio'),
+const el = (id) => document.getElementById(id);
+const ui = {
+  aurora: el('aurora'), grain: el('grain'),
+  form: el('linkForm'), input: el('linkInput'), analyse: el('analyseBtn'),
+  status: el('status'), pasteToggle: el('pasteToggle'), pastePanel: el('pastePanel'),
+  lyricsInput: el('lyricsInput'), analysePaste: el('analysePasteBtn'), demo: el('demoBtn'),
+  analysis: el('analysis'), lyrics: el('lyrics'), chains: el('chains'), stats: el('stats'),
+  groupCount: el('groupCount'), tooltip: el('tooltip'),
+  trackSelect: el('trackSelect'), engineSelect: el('engineSelect'), dimToggle: el('dimToggle'),
+  trackTitle: el('trackTitle'), trackArtist: el('trackArtist'),
+  trackArt: el('trackArt'), trackBadges: el('trackBadges'),
+  player: el('player'), playerFrame: el('playerFrame'), audio: el('audio'),
+  heroTitle: el('heroTitle'),
 };
 
 let current = null;
 let isolated = null;
+let auroraHandle = null;
+let stopStatusAnimation = null;
 
-/* ---------- colour ---------- */
+/* ------------------------------------------------------------- palette -- */
 
-/* Hash the label to a hue so the palette is stable across renders and
- * unbounded in size. The golden-angle step keeps adjacent groups far apart. */
-function hueFor(label) {
+function hashLabel(label) {
   let hash = 0;
-  for (let i = 0; i < label.length; i++) {
-    hash = (hash * 31 + label.charCodeAt(i)) % 360;
-  }
-  return (hash * 137.508) % 360;
+  for (let i = 0; i < label.length; i++) hash = (hash * 31 + label.charCodeAt(i)) % 100003;
+  return hash;
 }
+
+/* Golden-angle stepping keeps adjacent groups far apart on the wheel. */
+function hueFor(label) { return (hashLabel(label) * 137.508) % 360; }
 
 function colourFor(label) {
-  const hue = hueFor(label);
-  const light = 62 + (hueFor(label + '~') % 14);
-  return `hsl(${hue.toFixed(1)}, 72%, ${light}%)`;
+  return `hsl(${hueFor(label).toFixed(1)}, ${70 + (hashLabel(label) % 9)}%, ${62 + (hashLabel(label + '~') % 13)}%)`;
 }
 
-/* ---------- rendering ---------- */
+/* ---------------------------------------------------------------- status -- */
+
+function setStatus(text, kind = '') {
+  if (stopStatusAnimation) { stopStatusAnimation(); stopStatusAnimation = null; }
+  ui.status.className = `status ${kind}`;
+  if (kind === 'working') {
+    stopStatusAnimation = Effects.scrambleLoop(ui.status, text);
+  } else {
+    ui.status.textContent = text;
+  }
+}
+
+/* ------------------------------------------------------------- rendering -- */
 
 function renderStats(verse) {
   const m = verse.metrics || {};
   const cells = [
-    ['Density', `${m.density ?? 0}%`],
-    ['Multi', `${m.multi ?? 0}%`],
-    ['Diversity', `${m.diversity ?? 0}%`],
-    ['Groups', m.signatures ?? 0],
-    ['Syllables', m.syllables ?? 0],
-    ['Engine', verse.engine || '-'],
+    ['Density', m.density ?? 0, '%', 1],
+    ['Multisyllabic', m.multi ?? 0, '%', 1],
+    ['Diversity', m.diversity ?? 0, '%', 1],
+    ['Groups', m.signatures ?? 0, '', 0],
+    ['Syllables', m.syllables ?? 0, '', 0],
   ];
-  els.stats.innerHTML = cells
-    .map(([name, value]) => `<div class="stat"><span class="value">${value}</span><span class="name">${name}</span></div>`)
-    .join('');
-  els.stats.hidden = false;
+
+  if (ui.stats.childElementCount !== cells.length) {
+    ui.stats.innerHTML = cells.map(([name]) =>
+      `<div class="stat"><span class="stat-value">0</span><span class="stat-name">${name}</span></div>`).join('');
+  }
+  ui.stats.querySelectorAll('.stat').forEach((node, i) => {
+    const [name, value, suffix, decimals] = cells[i];
+    node.querySelector('.stat-name').textContent = name;
+    Effects.countUp(node.querySelector('.stat-value'), value, { suffix, decimals });
+  });
+}
+
+function renderTrack(verse) {
+  ui.trackTitle.textContent = verse.track || 'Untitled';
+  ui.trackArtist.textContent = verse.artist || '';
+
+  const source = verse.source || {};
+  if (source.thumbnail) {
+    ui.trackArt.src = source.thumbnail;
+    ui.trackArt.alt = `${verse.track} cover`;
+    ui.trackArt.hidden = false;
+  } else {
+    ui.trackArt.hidden = true;
+    ui.trackArt.removeAttribute('src');
+  }
+
+  const badges = [];
+  if (verse.engine) badges.push({ text: verse.engine });
+  if (source.captions) badges.push({ text: `${source.captions} captions` });
+  if (source.language) badges.push({ text: source.language });
+  if (verse.timed) badges.push({ text: 'timed', live: true });
+  ui.trackBadges.innerHTML = badges
+    .map((b) => `<span class="badge${b.live ? ' live' : ''}">${b.text}</span>`).join('');
 }
 
 function renderLyrics(verse) {
@@ -77,173 +115,113 @@ function renderLyrics(verse) {
       wordEl.className = 'word';
 
       word.syllables.forEach((syl) => {
-        const el = document.createElement('span');
-        el.textContent = syl.text;
-        el.className = 'syllable ' + (syl.label ? 'rhyme' : 'plain');
+        const node = document.createElement('span');
+        node.textContent = syl.text;
+        node.className = 'syllable ' + (syl.label ? 'rhyme' : 'plain');
         if (syl.label) {
-          el.style.backgroundColor = colourFor(syl.label);
-          el.dataset.label = syl.label;
+          node.style.backgroundColor = colourFor(syl.label);
+          node.dataset.label = syl.label;
         }
         if (syl.start !== null && syl.start !== undefined) {
-          el.dataset.start = syl.start;
-          el.dataset.end = syl.end;
+          node.dataset.start = syl.start;
+          node.dataset.end = syl.end;
         }
-        el.dataset.nucleus = syl.nucleus || '';
-        el.dataset.coda = syl.coda || '';
-        el.dataset.onset = syl.onset || '';
-        el.dataset.word = word.full_text || '';
-        wordEl.appendChild(el);
+        node.dataset.nucleus = syl.nucleus || '';
+        node.dataset.coda = syl.coda || '';
+        node.dataset.onset = syl.onset || '';
+        node.dataset.word = word.full_text || '';
+        wordEl.appendChild(node);
       });
-
       lineEl.appendChild(wordEl);
     });
-
     fragment.appendChild(lineEl);
   });
 
-  els.lyrics.innerHTML = '';
+  ui.lyrics.innerHTML = '';
   if (!verse.lines.length) {
-    els.lyrics.innerHTML = '<p class="placeholder">Nothing to show.</p>';
+    ui.lyrics.innerHTML = '<p class="placeholder">Nothing to show.</p>';
     return;
   }
-  els.lyrics.appendChild(fragment);
+
+  // Words first, colour second: the reader sees the text, then the pattern.
+  if (!Effects.prefersReducedMotion()) {
+    ui.lyrics.classList.add('colouring');
+    setTimeout(() => ui.lyrics.classList.remove('colouring'), 260);
+  }
+  ui.lyrics.appendChild(fragment);
 }
 
-function renderGroups(verse) {
-  els.groups.innerHTML = '';
+function renderChains(verse) {
   const groups = verse.groups || [];
+  ui.groupCount.textContent = groups.length ? `${groups.length}` : '';
+  ui.chains.innerHTML = '';
+
   if (!groups.length) {
-    els.groups.innerHTML = '<li class="hint">No group passed the occurrence threshold.</li>';
+    ui.chains.innerHTML = '<p class="hint">No group passed the occurrence threshold.</p>';
     return;
   }
 
   groups.forEach((group) => {
-    const item = document.createElement('li');
-    item.className = 'group-item';
-    item.dataset.label = group.label;
-    item.tabIndex = 0;
-    item.setAttribute('role', 'button');
-
-    const swatch = document.createElement('span');
-    swatch.className = 'swatch';
-    swatch.style.backgroundColor = colourFor(group.label);
-
-    const name = document.createElement('span');
-    name.textContent = group.label;
-
-    const meta = document.createElement('span');
-    meta.className = 'group-meta';
-    meta.textContent = group.length > 1
-      ? `${group.length}-syl x${group.occurrences}`
-      : `${group.syllables} syl`;
-
-    item.append(swatch, name, meta);
-    item.title = group.similarity !== null && group.similarity !== undefined
-      ? `similarity ${group.similarity}, strength ${group.strength}`
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'chain';
+    row.dataset.label = group.label;
+    row.title = group.similarity != null
+      ? `similarity ${group.similarity} · strength ${group.strength}`
       : `strength ${group.strength}`;
 
-    const activate = () => toggleIsolate(group.label);
-    item.addEventListener('click', activate);
-    item.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        activate();
-      }
-    });
+    row.innerHTML =
+      `<span class="chain-swatch" style="background:${colourFor(group.label)}"></span>` +
+      `<span class="chain-label">${group.label}</span>` +
+      `<span class="chain-meta">${group.length > 1
+        ? `${group.length}-syl ×${group.occurrences}` : `${group.syllables} syl`}</span>`;
 
-    els.groups.appendChild(item);
+    row.addEventListener('click', () => toggleIsolate(group.label));
+    ui.chains.appendChild(row);
   });
 }
 
 function show(verse) {
   current = verse;
-  if (verse.engine) els.engine.value = verse.engine;
   isolated = null;
+  if (verse.engine) ui.engineSelect.value = verse.engine;
+
+  ui.analysis.hidden = false;
+  renderTrack(verse);
   renderStats(verse);
   renderLyrics(verse);
-  renderGroups(verse);
+  renderChains(verse);
   applyIsolation();
-  setupAudio(verse);
-}
+  setupPlayback(verse);
+  Effects.revealOnScroll();
 
-/* ---------- karaoke playback ----------
- *
- * Only shown when the verse carries both an audio file and word timings.
- * Everything else works identically without them. */
-
-let timedSyllables = [];
-let playing = null;
-
-function setupAudio(verse) {
-  timedSyllables = [];
-  playing = null;
-  clearPlaying();
-
-  if (!verse.audio || !verse.timed) {
-    els.player.hidden = true;
-    els.audio.removeAttribute('src');
-    return;
-  }
-
-  timedSyllables = Array.from(els.lyrics.querySelectorAll('.syllable[data-start]'))
-    .map((el) => ({ el, start: parseFloat(el.dataset.start), end: parseFloat(el.dataset.end) }))
-    .sort((a, b) => a.start - b.start);
-
-  els.audio.src = verse.audio;
-  els.player.hidden = false;
-}
-
-function clearPlaying() {
-  if (playing) {
-    playing.el.classList.remove('playing');
-    playing = null;
+  // Aurora energy tracks how densely the verse rhymes.
+  if (auroraHandle) {
+    auroraHandle.setEnergy(0.22 + ((verse.metrics?.density ?? 0) / 100) * 0.6);
+    const strongest = (verse.groups || [])[0];
+    if (strongest) auroraHandle.setHue(hueFor(strongest.label) * 0.35);
   }
 }
 
-function highlightAt(time) {
-  /* Binary search for the syllable covering `time`. timeupdate fires about four
-   * times a second, and a linear scan over ~1500 syllables each time is wasteful
-   * enough to be visible on a phone. */
-  let low = 0;
-  let high = timedSyllables.length - 1;
-  let found = null;
-
-  while (low <= high) {
-    const mid = (low + high) >> 1;
-    const item = timedSyllables[mid];
-    if (time < item.start) high = mid - 1;
-    else if (time > item.end) low = mid + 1;
-    else { found = item; break; }
-  }
-
-  if (found === playing) return;
-  clearPlaying();
-  if (found) {
-    found.el.classList.add('playing');
-    found.el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }
-  playing = found;
-}
-
-/* ---------- interaction ---------- */
+/* ----------------------------------------------------------- interaction -- */
 
 function syllablesWithLabel(label) {
-  return els.lyrics.querySelectorAll(`.syllable[data-label="${CSS.escape(label)}"]`);
+  return ui.lyrics.querySelectorAll(`.syllable[data-label="${CSS.escape(label)}"]`);
 }
 
 function trace(label) {
-  els.lyrics.querySelectorAll('.syllable.traced').forEach((el) => el.classList.remove('traced'));
+  ui.lyrics.querySelectorAll('.syllable.traced').forEach((n) => n.classList.remove('traced'));
   if (!label) {
     if (!isolated) document.body.classList.remove('tracing');
     return;
   }
-  syllablesWithLabel(label).forEach((el) => el.classList.add('traced'));
+  syllablesWithLabel(label).forEach((n) => n.classList.add('traced'));
   document.body.classList.add('tracing');
 }
 
 function applyIsolation() {
-  els.groups.querySelectorAll('.group-item').forEach((item) => {
-    item.classList.toggle('active', item.dataset.label === isolated);
+  ui.chains.querySelectorAll('.chain').forEach((row) => {
+    row.classList.toggle('active', row.dataset.label === isolated);
   });
   trace(isolated);
 }
@@ -253,218 +231,322 @@ function toggleIsolate(label) {
   applyIsolation();
 }
 
-/* ---------- tooltip ---------- */
-
-function showTooltip(el, event) {
-  const parts = [`<b>${el.dataset.word || el.textContent}</b>`];
+function showTooltip(node, event) {
+  const parts = [`<div class="tip-word">${node.dataset.word || node.textContent}</div>`];
   const phon = [];
-  if (el.dataset.onset) phon.push(`onset ${el.dataset.onset}`);
-  if (el.dataset.nucleus) phon.push(`nucleus ${el.dataset.nucleus}`);
-  if (el.dataset.coda) phon.push(`coda ${el.dataset.coda}`);
-  if (phon.length) parts.push(`<span class="mono">${phon.join(' &middot; ')}</span>`);
+  if (node.dataset.onset) phon.push(`onset ${node.dataset.onset}`);
+  if (node.dataset.nucleus) phon.push(`nucleus ${node.dataset.nucleus}`);
+  if (node.dataset.coda) phon.push(`coda ${node.dataset.coda}`);
+  if (phon.length) parts.push(`<div class="tip-phon">${phon.join(' · ')}</div>`);
 
-  if (el.dataset.label) {
-    const group = (current.groups || []).find((g) => g.label === el.dataset.label);
-    let line = `group <b>${el.dataset.label}</b>`;
+  if (node.dataset.label) {
+    const group = (current?.groups || []).find((g) => g.label === node.dataset.label);
+    let line = `group ${node.dataset.label}`;
     if (group) {
       line += group.length > 1
-        ? ` &mdash; ${group.length} syllables x${group.occurrences}`
-        : ` &mdash; ${group.syllables} syllables`;
-      if (group.similarity !== null && group.similarity !== undefined) {
-        line += `, similarity ${group.similarity}`;
-      }
+        ? ` — ${group.length} syllables ×${group.occurrences}`
+        : ` — ${group.syllables} syllables`;
+      if (group.similarity != null) line += `, similarity ${group.similarity}`;
     }
-    parts.push(line);
+    parts.push(`<div class="tip-group">${line}</div>`);
   } else {
-    parts.push('<span style="color:#9a9ab0">no rhyme group</span>');
+    parts.push('<div class="tip-none">no rhyme group</div>');
   }
 
-  els.tooltip.innerHTML = parts.join('<br>');
-  els.tooltip.hidden = false;
+  ui.tooltip.innerHTML = parts.join('');
+  ui.tooltip.hidden = false;
 
-  const pad = 12;
-  const box = els.tooltip.getBoundingClientRect();
+  const pad = 14;
+  const box = ui.tooltip.getBoundingClientRect();
   let x = event.clientX + pad;
   let y = event.clientY + pad;
   if (x + box.width > window.innerWidth - pad) x = event.clientX - box.width - pad;
   if (y + box.height > window.innerHeight - pad) y = event.clientY - box.height - pad;
-  els.tooltip.style.left = `${Math.max(pad, x)}px`;
-  els.tooltip.style.top = `${Math.max(pad, y)}px`;
+  ui.tooltip.style.left = `${Math.max(pad, x)}px`;
+  ui.tooltip.style.top = `${Math.max(pad, y)}px`;
 }
 
-function hideTooltip() {
-  els.tooltip.hidden = true;
+/* -------------------------------------------------------------- playback -- */
+
+let timed = [];
+let playing = null;
+let ytPlayer = null;
+let ytTicker = 0;
+
+function clearPlaying() {
+  if (playing) { playing.node.classList.remove('playing'); playing = null; }
 }
 
-/* ---------- paste / analyse ---------- */
+function setupPlayback(verse) {
+  timed = [];
+  clearPlaying();
+  clearInterval(ytTicker);
+  ytPlayer = null;
+  ui.playerFrame.hidden = true;
+  ui.playerFrame.innerHTML = '';
+  ui.audio.hidden = true;
+  ui.player.hidden = true;
 
-function servedOverHttp() {
-  return location.protocol === 'http:' || location.protocol === 'https:';
-}
+  if (!verse.timed) return;
 
-async function analyse() {
-  const lyrics = els.lyricsInput.value.trim();
-  if (!lyrics) {
-    setStatus('Paste some lyrics first.', true);
-    return;
+  timed = Array.from(ui.lyrics.querySelectorAll('.syllable[data-start]'))
+    .map((node) => ({ node, start: +node.dataset.start, end: +node.dataset.end }))
+    .sort((a, b) => a.start - b.start);
+  if (!timed.length) return;
+
+  const source = verse.source || {};
+  if (source.kind === 'youtube' && source.video_id) {
+    // Embed YouTube's own player: playback stays on the platform licensed to
+    // serve it, and nothing copyrighted is downloaded or hosted here.
+    mountYouTube(source.video_id);
+    ui.player.hidden = false;
+  } else if (verse.audio) {
+    ui.audio.src = verse.audio;
+    ui.audio.hidden = false;
+    ui.player.hidden = false;
   }
-  if (!servedOverHttp()) {
-    setStatus('Analysing needs the local server: run `make serve`.', true);
-    return;
-  }
+}
 
-  els.analyseBtn.disabled = true;
-  setStatus('Analysing...');
-  try {
-    const response = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lyrics, engine: els.engine.value }),
+function mountYouTube(videoId) {
+  ui.playerFrame.hidden = false;
+  ui.playerFrame.innerHTML =
+    `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1&rel=0"
+             title="Track playback" allow="accelerometer; autoplay; encrypted-media; picture-in-picture"
+             allowfullscreen loading="lazy"></iframe>`;
+
+  const start = () => {
+    const iframe = ui.playerFrame.querySelector('iframe');
+    if (!iframe || !window.YT || !window.YT.Player) return;
+    ytPlayer = new window.YT.Player(iframe, {
+      events: {
+        onReady: () => {
+          clearInterval(ytTicker);
+          ytTicker = setInterval(() => {
+            if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+              highlightAt(ytPlayer.getCurrentTime());
+            }
+          }, 120);
+        },
+      },
     });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+  };
 
-    verses.unshift(payload);
-    populateTracks();
-    els.track.value = '0';
-    show(payload);
-    setStatus(`Done: ${payload.metrics.syllables} syllables, ${payload.metrics.signatures} groups.`);
+  if (window.YT && window.YT.Player) { start(); return; }
+  if (!document.getElementById('yt-iframe-api')) {
+    const script = document.createElement('script');
+    script.id = 'yt-iframe-api';
+    script.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(script);
+  }
+  // The API calls this global once it has loaded.
+  const previous = window.onYouTubeIframeAPIReady;
+  window.onYouTubeIframeAPIReady = () => { if (previous) previous(); start(); };
+}
+
+function highlightAt(time) {
+  // Binary search: this runs ~8x a second over up to 1500 syllables.
+  let low = 0, high = timed.length - 1, found = null;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const item = timed[mid];
+    if (time < item.start) high = mid - 1;
+    else if (time > item.end) low = mid + 1;
+    else { found = item; break; }
+  }
+  if (found === playing) return;
+  clearPlaying();
+  if (found) {
+    found.node.classList.add('playing');
+    found.node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    playing = found;
+    if (auroraHandle && found.node.dataset.label) {
+      auroraHandle.setHue(hueFor(found.node.dataset.label) * 0.4);
+    }
+  }
+}
+
+/* ---------------------------------------------------------------- server -- */
+
+const overHttp = () => location.protocol === 'http:' || location.protocol === 'https:';
+
+async function post(path, body) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+  if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+  return payload;
+}
+
+function requireServer() {
+  if (overHttp()) return true;
+  setStatus('Analysing needs the local server — run `make serve`.', 'error');
+  return false;
+}
+
+function addVerse(payload) {
+  verses.unshift(payload);
+  populateTracks();
+  ui.trackSelect.value = '0';
+  show(payload);
+  document.getElementById('analysis').scrollIntoView({ block: 'start' });
+}
+
+async function analyseLink(query) {
+  if (!query.trim()) { setStatus('Paste a link first.', 'error'); return; }
+  if (!requireServer()) return;
+
+  ui.analyse.disabled = true;
+  setStatus('Reading captions…', 'working');
+  try {
+    const payload = await post('/api/song', { url: query.trim(), engine: ui.engineSelect.value });
+    addVerse(payload);
+    setStatus(`${payload.artist} — ${payload.track}: ${payload.metrics.syllables} syllables, ${payload.metrics.signatures} rhyme groups.`);
   } catch (error) {
-    setStatus(String(error.message || error), true);
+    setStatus(String(error.message || error), 'error');
   } finally {
-    els.analyseBtn.disabled = false;
+    ui.analyse.disabled = false;
+  }
+}
+
+async function analysePasted() {
+  const lyrics = ui.lyricsInput.value.trim();
+  if (!lyrics) { setStatus('Paste some lyrics first.', 'error'); return; }
+  if (!requireServer()) return;
+
+  ui.analysePaste.disabled = true;
+  setStatus('Sounding it out…', 'working');
+  try {
+    const payload = await post('/api/analyze', { lyrics, engine: ui.engineSelect.value });
+    addVerse(payload);
+    setStatus(`${payload.metrics.syllables} syllables, ${payload.metrics.signatures} rhyme groups.`);
+  } catch (error) {
+    setStatus(String(error.message || error), 'error');
+  } finally {
+    ui.analysePaste.disabled = false;
   }
 }
 
 async function reanalyseCurrent() {
-  if (!current || !current.text) return;
-  if (!servedOverHttp()) {
-    setStatus('Switching engines needs the local server: run `make serve`.', true);
-    els.pastePanel.hidden = false;
-    els.engine.value = current.engine;
-    return;
-  }
+  if (!current?.text) return;
+  if (!overHttp()) { ui.engineSelect.value = current.engine; return; }
 
   const index = verses.indexOf(current);
-  setStatus(`Re-analysing with ${els.engine.value}...`);
+  setStatus(`Re-analysing with ${ui.engineSelect.value}…`, 'working');
   try {
-    const response = await fetch('/api/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        lyrics: current.text,
-        artist: current.artist,
-        track: current.track,
-        engine: els.engine.value,
-      }),
+    const payload = await post('/api/analyze', {
+      lyrics: current.text, artist: current.artist,
+      track: current.track, engine: ui.engineSelect.value,
     });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-
+    // Re-analysis loses provenance, so carry it across.
+    payload.source = current.source;
     if (index >= 0) verses[index] = payload;
     show(payload);
     setStatus(`${payload.engine}: ${payload.metrics.density}% density, ${payload.metrics.signatures} groups.`);
   } catch (error) {
-    setStatus(String(error.message || error), true);
-    els.engine.value = current.engine;
+    setStatus(String(error.message || error), 'error');
+    ui.engineSelect.value = current.engine;
   }
 }
 
-function setStatus(text, isError) {
-  els.pasteStatus.textContent = text;
-  els.pasteStatus.classList.toggle('error', Boolean(isError));
-}
-
-/* ---------- wiring ---------- */
+/* ----------------------------------------------------------------- wiring -- */
 
 function populateTracks() {
-  els.track.innerHTML = '';
-  verses.forEach((verse, index) => {
+  ui.trackSelect.innerHTML = '';
+  verses.forEach((verse, i) => {
     const option = document.createElement('option');
-    option.value = String(index);
-    option.textContent = `${verse.artist} - ${verse.track}`;
-    els.track.appendChild(option);
+    option.value = String(i);
+    option.textContent = `${verse.artist} — ${verse.track}`;
+    ui.trackSelect.appendChild(option);
   });
 }
 
 function init() {
   document.body.classList.add('dim');
 
-  els.lyrics.addEventListener('mouseover', (event) => {
-    const el = event.target.closest('.syllable');
-    if (!el) return;
-    showTooltip(el, event);
-    if (!isolated && el.dataset.label) trace(el.dataset.label);
+  auroraHandle = Effects.aurora(ui.aurora);
+  Effects.noise(ui.grain);
+  Effects.splitText(ui.heroTitle);
+  Effects.clickSpark(document.body);
+  Effects.magnet(ui.analyse);
+  document.querySelectorAll('.panel').forEach(Effects.spotlight);
+  Effects.revealOnScroll();
+
+  ui.form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    analyseLink(ui.input.value);
   });
-  els.lyrics.addEventListener('mousemove', (event) => {
-    if (!els.tooltip.hidden) {
-      const el = event.target.closest('.syllable');
-      if (el) showTooltip(el, event);
+
+  ui.pasteToggle.addEventListener('click', () => {
+    ui.pastePanel.hidden = !ui.pastePanel.hidden;
+    if (!ui.pastePanel.hidden) ui.lyricsInput.focus();
+  });
+  ui.analysePaste.addEventListener('click', analysePasted);
+  ui.lyricsInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) analysePasted();
+  });
+
+  ui.demo.addEventListener('click', () => {
+    if (verses.length) {
+      ui.trackSelect.value = '0';
+      show(verses[0]);
+      ui.analysis.scrollIntoView({ block: 'start' });
+      setStatus('');
+    } else {
+      setStatus('No pre-analysed verses bundled — run `make web` first.', 'error');
     }
   });
-  els.lyrics.addEventListener('mouseleave', () => {
-    hideTooltip();
+
+  ui.lyrics.addEventListener('mouseover', (event) => {
+    const node = event.target.closest('.syllable');
+    if (!node) return;
+    showTooltip(node, event);
+    if (!isolated && node.dataset.label) trace(node.dataset.label);
+  });
+  ui.lyrics.addEventListener('mousemove', (event) => {
+    if (ui.tooltip.hidden) return;
+    const node = event.target.closest('.syllable');
+    if (node) showTooltip(node, event);
+  });
+  ui.lyrics.addEventListener('mouseleave', () => {
+    ui.tooltip.hidden = true;
     if (!isolated) trace(null);
   });
-  els.lyrics.addEventListener('click', (event) => {
-    const el = event.target.closest('.syllable[data-label]');
-    if (el) toggleIsolate(el.dataset.label);
+  ui.lyrics.addEventListener('click', (event) => {
+    const node = event.target.closest('.syllable[data-label]');
+    if (node) toggleIsolate(node.dataset.label);
   });
 
-  els.track.addEventListener('change', (event) => {
-    const verse = verses[Number(event.target.value)];
+  ui.trackSelect.addEventListener('change', (event) => {
+    const verse = verses[+event.target.value];
     if (verse) show(verse);
   });
-
-  // Re-run the displayed verse through another engine, so the four engines can
-  // be compared side by side on the same lyrics. Needs the local server.
-  els.engine.addEventListener('change', () => {
-    if (current && current.engine !== els.engine.value) reanalyseCurrent();
+  ui.engineSelect.addEventListener('change', () => {
+    if (current && current.engine !== ui.engineSelect.value) reanalyseCurrent();
   });
 
-  els.pasteToggle.addEventListener('click', () => {
-    els.pastePanel.hidden = !els.pastePanel.hidden;
-    if (!els.pastePanel.hidden) {
-      els.lyricsInput.focus();
-      if (!servedOverHttp()) {
-        setStatus('Opened from a file, so analysing is unavailable. Run `make serve`.', true);
-      }
-    }
-  });
-
-  els.analyseBtn.addEventListener('click', analyse);
-  els.lyricsInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) analyse();
-  });
-
-  /* `timeupdate` only fires while the media is actually advancing, so scrubbing
-   * a paused track left the highlight where it was. `seeked` covers that. */
-  ['timeupdate', 'seeked', 'loadedmetadata'].forEach((event) => {
-    els.audio.addEventListener(event, () => {
-      if (timedSyllables.length) highlightAt(els.audio.currentTime);
-    });
-  });
-  els.audio.addEventListener('ended', clearPlaying);
-
-  els.dimToggle.addEventListener('click', () => {
+  ui.dimToggle.addEventListener('click', () => {
     const on = document.body.classList.toggle('dim');
-    els.dimToggle.setAttribute('aria-pressed', String(on));
+    ui.dimToggle.setAttribute('aria-pressed', String(on));
   });
+
+  ['timeupdate', 'seeked', 'loadedmetadata'].forEach((event) => {
+    ui.audio.addEventListener(event, () => { if (timed.length) highlightAt(ui.audio.currentTime); });
+  });
+  ui.audio.addEventListener('ended', clearPlaying);
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && isolated) toggleIsolate(isolated);
   });
 
-  if (!verses.length) {
-    els.lyrics.innerHTML =
-      '<p class="placeholder">No pre-exported verses found. Run <code>make web</code> to generate ' +
-      '<code>web/data.js</code>, or <code>make serve</code> and paste your own lyrics.</p>';
-    els.track.innerHTML = '<option>no data</option>';
-    return;
+  if (verses.length) {
+    populateTracks();
+    show(verses[0]);
+  } else {
+    ui.trackSelect.innerHTML = '<option>nothing bundled</option>';
   }
-
-  populateTracks();
-  show(verses[0]);
 }
 
 document.addEventListener('DOMContentLoaded', init);

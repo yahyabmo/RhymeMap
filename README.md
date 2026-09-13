@@ -26,7 +26,7 @@ make demo           # colour-code the demo verse in the terminal
 make stats          # analyse a corpus -> data/stats.csv
 make plots          # generate every figure into data/
 make web            # export web/data.js and open the browser viewer
-make serve          # viewer + live analysis of lyrics you paste in
+make serve          # full interface: paste a YouTube link or your own lyrics
 make test           # run the unit tests
 make eval           # gold set, ablation table, artist-ID experiment
 ```
@@ -68,25 +68,65 @@ before falling back to the neural grapheme-to-phoneme model.
 | **Signatures** | number of distinct rhyme groups |
 | **Syll.** | total syllable count |
 
-## The viewer
+## Analyse any song
 
-`make web` opens a static page with the bundled verses pre-analysed. `make serve`
-adds a local server so you can paste your own lyrics and switch engines live.
+Paste a YouTube link and RhymeMapper reads the captions:
 
-- Hover any syllable and every syllable in its rhyme group lights up across the
-  whole verse; the tooltip shows the onset, nucleus and coda behind the match.
-- The sidebar lists rhyme groups longest-first. Click one to isolate it and dim
-  everything else — this is what makes a multisyllabic chain such as
-  `straight face lookin' boy` / `take place lookin' boy` / `they say lookin' boy`
-  visible as a single structure.
-- Switching the engine re-analyses the verse on screen, so the v1 baseline and
+```bash
+make serve                                  # then paste a link in the browser
+python -m scripts.analyse_song "https://www.youtube.com/watch?v=..."
+```
+
+Captions are what make this work without a machine-learning pipeline. One fetch
+yields the lyrics **and** word-level timings, so the rhyme analysis and the
+karaoke playback come from the same source with nothing to align afterwards.
+
+Three things captions get wrong, and what the parser does about them:
+
+- **They scroll.** Automatic captions repeat the tail of the previous cue so the
+  viewer keeps a rolling two-line window. Read literally that yields every lyric
+  two or three times — and a duplicated line rhymes perfectly with itself, which
+  would inflate density and chain counts. Cues are reduced to what they add.
+- **Cue boundaries are not line breaks.** A cue may hold a line and a half. Since
+  line-final rhyme is most of what this measures, merging two lines deletes the
+  rhyme at the join, so lines are recovered from the pauses between words —
+  with a threshold taken from the song's own median gap, so a double-time verse
+  and a slow hook both work.
+- **`[Music]`, `[Applause]`** and friends are filtered out.
+
+Audio is never downloaded. The viewer embeds YouTube's own player and drives the
+highlight from its clock, which keeps playback on the platform licensed to serve
+it and costs no bandwidth or disk.
+
+No link? Paste lyrics directly, or point the tool at a local file with
+`--file lyrics.txt`.
+
+## The interface
+
+`make serve` opens the full interface; `make web` produces a static page with the
+bundled verses pre-analysed.
+
+- **Hover any syllable** and every syllable in its rhyme group lights up across
+  the verse. The tooltip shows the onset, nucleus and coda behind the match.
+- **The sidebar lists rhyme groups longest-first.** Click one to isolate it —
+  this is what makes a chain like `straight face lookin' boy` / `take place
+  lookin' boy` / `they say lookin' boy` legible as a single structure.
+- **Switching the engine re-analyses the song on screen**, so the v1 baseline and
   the current engine can be compared on the same lyrics.
+- **Rhyme colour is generated from the phonetics**, not picked from a palette.
+  There is no upper bound on groups: *Rap God* produces 56 under the exact engine
+  and 257 under chain detection.
 
-Analysis runs on a small local server rather than in JavaScript, because CMUdict
-is several megabytes and a second implementation of the phonetic engine would
-drift from the Python one — and then the browser and the terminal would disagree
-about what rhymes. The static page still works with no server; only the paste box
-and engine switching need it.
+The design system is written down in [docs/DESIGN.md](./docs/DESIGN.md) — palette,
+type scale, motion rules, component specs. Its one idea: **the analysis is the
+album art.** Music players go achromatic so cover art can supply the colour;
+RhymeMapper has no cover art, it has phonetics, so the chrome stays near-black
+and every hue on screen is computed from the sound.
+
+Effects (aurora, grain, split-text, count-up, click-spark, magnetic buttons,
+spotlight panels, scrambled loading text) are ported to vanilla JS from the
+patterns in [react-bits](https://github.com/DavidHDev/react-bits). All of them
+switch off under `prefers-reduced-motion`, and the page stays fully usable.
 
 ## Playing it against the audio
 
