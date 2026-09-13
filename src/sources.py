@@ -36,6 +36,45 @@ class SourceError(Exception):
     """Raised with an actionable message when a song cannot be loaded."""
 
 
+# yt-dlp reports every failure as one long DownloadError, and its advice
+# ("report this issue on github") is wrong for most of them. Match the cause and
+# say something the person reading it can act on.
+_FAILURE_HINTS = (
+    (("unable to connect to proxy", "tunnel connection failed", "connection refused",
+      "temporary failure in name resolution", "network is unreachable",
+      "failed to resolve", "timed out"),
+     "Could not reach YouTube. Check your internet connection, or whether a proxy or "
+     "firewall is blocking it."),
+    (("private video", "video is private"),
+     "That video is private, so its captions cannot be read. Try another upload."),
+    (("video unavailable", "removed by the uploader", "no longer available",
+      "account associated with this video has been terminated"),
+     "That video is unavailable. Try another upload of the song."),
+    (("sign in to confirm your age", "age-restricted", "age restricted", "inappropriate for some users"),
+     "That video is age-restricted and cannot be read without signing in. Try another upload."),
+    (("sign in to confirm", "not a bot", "confirm you're not a bot"),
+     "YouTube is asking this machine to sign in before serving the video. Try again "
+     "later, or paste the lyrics in directly."),
+    (("available in your country", "blocked it in your country", "geo restricted",
+      "not available from your location"),
+     "That video is blocked in your region. Try another upload."),
+    (("unsupported url", "is not a valid url"),
+     "That link could not be read as a YouTube video."),
+)
+
+
+def explain_failure(message: str) -> str:
+    """Turn a yt-dlp error into something worth showing a person."""
+    lowered = message.lower()
+    for needles, hint in _FAILURE_HINTS:
+        if any(needle in lowered for needle in needles):
+            return hint
+    # Unrecognised: keep the first line, drop yt-dlp's issue-tracker boilerplate.
+    first = message.split("\n")[0].strip()
+    first = first.split("; please report this issue")[0].strip()
+    return f"Could not read that video. {first}"
+
+
 @dataclass
 class Song:
     """A song ready to analyse."""
@@ -202,7 +241,7 @@ def fetch_youtube(url: str, languages=("en",), dedupe: bool = True) -> Song:
     except SourceError:
         raise
     except Exception as exc:
-        raise SourceError(f"Could not read that video: {type(exc).__name__}: {exc}") from exc
+        raise SourceError(explain_failure(str(exc))) from exc
 
     cues = parse_caption_payload(payload, track.get("ext", ""))
     lyrics, timings = cues_to_verse(cues, dedupe=dedupe)

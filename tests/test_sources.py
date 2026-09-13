@@ -15,6 +15,7 @@ from unittest.mock import patch
 from src.sources import (
     Song,
     SourceError,
+    explain_failure,
     from_text,
     is_youtube_url,
     load,
@@ -186,6 +187,42 @@ class TestFetchYoutube(unittest.TestCase):
         with self.assertRaises(SourceError) as caught:
             self.fetch(payload=payload)
         self.assertIn("no usable lyrics", str(caught.exception))
+
+
+class TestExplainFailure(unittest.TestCase):
+    """yt-dlp reports everything as one DownloadError telling the user to file a
+    bug. Almost none of these are bugs."""
+
+    def test_network_failure(self):
+        message = explain_failure(
+            "ERROR: Unable to download API page: ('Unable to connect to proxy', "
+            "OSError('Tunnel connection failed: 403 Forbidden'))")
+        self.assertIn("Could not reach YouTube", message)
+
+    def test_private_video(self):
+        self.assertIn("private", explain_failure("ERROR: [youtube] X: Private video. Sign in").lower())
+
+    def test_unavailable_video(self):
+        self.assertIn("unavailable", explain_failure("ERROR: [youtube] X: Video unavailable").lower())
+
+    def test_age_restriction(self):
+        message = explain_failure("ERROR: [youtube] X: Sign in to confirm your age")
+        self.assertIn("age-restricted", message)
+
+    def test_geo_block(self):
+        message = explain_failure("ERROR: The uploader has not made this video available in your country")
+        self.assertIn("region", message)
+
+    def test_unknown_failure_keeps_the_first_line(self):
+        message = explain_failure(
+            "ERROR: [youtube] X: Brand new failure; please report this issue on "
+            "https://github.com/yt-dlp/yt-dlp/issues?q=\nsecond line")
+        self.assertIn("Brand new failure", message)
+
+    def test_unknown_failure_drops_the_issue_tracker_boilerplate(self):
+        message = explain_failure("ERROR: boom; please report this issue on https://github.com/yt-dlp")
+        self.assertNotIn("github.com", message)
+        self.assertNotIn("report this issue", message)
 
 
 class TestLoad(unittest.TestCase):
