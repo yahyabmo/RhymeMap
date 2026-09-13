@@ -1,224 +1,247 @@
 # RhymeMapper – Developer Documentation
 
-## Table of Contents
-1. [Project Overview](#overview)
-2. [Project Structure](#structure)
-3. [Core Data Models (`models.py`)](#models)
-4. [Phonetic Processing (`phonetics.py`)](#phonetics)
-5. [Rhyme Engine (`engine.py`)](#engine)
-6. [Colour Visualisation (`visual.py`)](#visual)
-7. [Batch Statistics (`scripts/generate_stats.py`)](#stats)
-8. [Analysis & Plotting (`analysis/`)](#analysis)
-9. [Makefile Commands](#makefile)
-10. [Testing](#testing)
-11. [Dependencies](#dependencies)
-12. [Pipeline Summary](#pipeline)
+1. [Overview](#overview)
+2. [Structure](#structure)
+3. [Data models](#models)
+4. [Phonetics](#phonetics)
+5. [Rhyme engine](#engine)
+6. [Metrics](#metrics)
+7. [Visualisation](#visual)
+8. [Batch analysis](#batch)
+9. [Analysis & plotting](#analysis)
+10. [Caching](#caching)
+11. [Makefile](#makefile)
+12. [Testing](#testing)
+13. [Dependencies](#dependencies)
 
 ---
 
-## 1. Project Overview <a name="overview"></a>
+## 1. Overview <a name="overview"></a>
 
-RhymeMapper analyses rhyme schemes in rap lyrics using phonetic data. It converts words into phonemes, splits them into syllables, extracts the nucleus (vowel) and coda (following consonants), builds a rhyme signature (with consonant families to support slant rhymes), then groups and colour‑codes rhyming syllables. It also computes statistical metrics (density, diversity, etc.) and generates comparative graphs for batch analysis.
-
----
-
-## 2. Project Structure <a name="structure"></a>
-RhymeMapper/
-├── src/ # core modules
-│ ├── models.py # data classes
-│ ├── phonetics.py # cleaning, phoneme extraction, syllable splitting
-│ ├── engine.py # rhyme signature, label assignment
-│ ├── visual.py # ANSI colour rendering
-│ └── main.py # demo entry point
-├── scripts/
-│ └── generate_stats.py # batch analysis from CSV → stats.csv
-├── analysis/ # plotting scripts
-│ ├── config.py # paths, colour palette
-│ ├── data_loader.py # load stats.csv, compute artist averages
-│ ├── plots.py # scatter, boxplot, similarity heatmap functions
-│ └── run_all_plots.py # generate all graphs automatically
-├── dataset/ # input CSV files (lyrics_raw.csv, artists_sample.csv)
-├── data/ # generated stats.csv and figures
-├── tests/ # unit tests (test_models.py, test_phonetics.py)
-├── Makefile # automation
-├── requirements.txt # dependencies
-├── README.md # user guide
-├── HISTORY.md # version history
-└── DOC_DEV.md # this file
-
+RhymeMapper converts lyrics into phonemes, splits them into syllables, extracts
+each syllable's onset / nucleus / coda, groups syllables that rhyme, and reports
+the result as coloured text, metrics, and figures.
 
 ---
 
-## 3. Core Data Models (`src/models.py`) <a name="models"></a>
+## 2. Structure <a name="structure"></a>
 
-All data classes use `@dataclass` for automatic constructors and string representations.
+```
+src/
+  models.py      dataclasses (Syllable, Nucleus, Word, Line, Verse)
+  cache.py       two-tier persistent memoisation
+  phonetics.py   cleaning, phoneme lookup, syllabification
+  engine.py      signatures and label assignment
+  metrics.py     the single definition of every metric
+  visual.py      ANSI colour rendering
+  analyzer.py    the corpus pipeline
+  main.py        demo CLI
+scripts/
+  generate_stats.py    corpus -> data/stats.csv
+  fetch_nltk_data.py   downloads the NLTK corpora g2p_en needs
+analysis/
+  config.py      paths, palette, headless backend selection
+  data_loader.py stats loading and per-artist means
+  plots.py       figure functions
+  run_all_plots.py  generates every figure
+tests/           unit tests
+dataset/         input corpora + the demo verse
+data/            generated stats.csv and figures
+web/             browser viewer
+```
+
+---
+
+## 3. Data models (`src/models.py`) <a name="models"></a>
 
 ### `Syllable`
-Represents a syllable.
-- `text: str` – approximate substring of the word (for colouring).
-- `nucleus: str` – vowel phoneme with stress (e.g., `"AA1"`).
-- `coda: list[str]` – consonant phonemes after the nucleus.
-- `is_terminal: bool` – True if this is the last syllable of the word.
-- `rhyme_label: str` – assigned letter (e.g., `"A"`, `"B"`).
+- `text` – orthographic slice used for display. **Approximate**: the spelling is
+  divided into equal spans rather than aligned to phonemes, so a boundary can sit
+  a character or two off. Display only; it never affects matching.
+- `nucleus` – vowel phoneme with stress, e.g. `"AA1"`.
+- `coda` – consonants after the nucleus.
+- `onset` – consonants before the nucleus. Kept because the similarity engine
+  needs it: identical onset *and* identical rime is repetition, not rhyme.
+- `is_terminal` – last syllable of the last word of a line.
+- `rhyme_label` – assigned group, e.g. `"A"`, `"AB"`.
+- `line_id`, `word_id`, `syl_index` – position, used to rebuild the syllable stream.
 
-### `Nucleus` (legacy)
-Kept for backward compatibility.
-- `phoneme: str` – vowel phoneme with stress.
-- `stress: int` – 0, 1, or 2.
-- `line_id: int`, `word_id: int`, `is_terminal: bool`.
+### `Nucleus`
+A vowel with its stress and position. Predates `Syllable` and is retained as
+public API; it is now **derived from the syllable split** rather than computed by
+a second, independent phoneme pass.
 
-### `Word`
-- `text: str` – cleaned word.
-- `syllables: list[Syllable]` – extracted from the word.
-- `nuclei: list[Nucleus]` – legacy vowel list.
-- `line_id: int`, `word_id: int`, `is_last_word: bool`.
-
-### `Line`
-- `text: str` – original line.
-- `words: list[Word]` – words belonging to the line.
-- `line_id: int`, `rhyme_label: str` – optional line label.
-
-### `Verse`
-- `lines: list[Line]` – sequence of lines.
-- `metadata: dict` – e.g., `{"artist": "Eminem"}`.
-- `verse_id: int`.
+### `Word`, `Line`, `Verse`
+Containers. `Verse.syllables()` flattens the whole verse into one ordered list.
 
 ---
 
-## 4. Phonetic Processing (`src/phonetics.py`) <a name="phonetics"></a>
+## 4. Phonetics (`src/phonetics.py`) <a name="phonetics"></a>
 
-- `clean_word(text)`: strips punctuation, lowercases, strips whitespace.
-- `extract_nuclei()`: legacy, uses `g2p_en` to get vowels (kept for compatibility).
-- `split_word_text(word_text, num_syllables)`: heuristic to divide a word into approximate character spans per syllable.
-- `heuristic_syllables(phonemes, word_text)`: fallback when `syllabify` fails – splits phonemes into syllables by detecting vowel digits.
-- `extract_syllables(word_text, line_id, word_id, is_last_word)`: main extraction. Uses `syllabify`; if that fails, calls `heuristic_syllables`. Returns a list of `Syllable` objects with text, nucleus, coda, and `is_terminal` correctly set.
-- `process_line(line_text, line_id)`: splits a raw line into words, cleans each, extracts both nuclei (legacy) and syllables, and builds a `Line` object.
-- `process_verse(raw_text, artist)`: entry point – splits raw text into lines, calls `process_line` for each, returns a `Verse`.
+- `clean_word(text)` – strip punctuation, lowercase, trim.
+- `lookup_variants(word)` – spellings to try against CMUdict before giving up:
+  the word itself, then g-dropping (`comin` → `coming`), then clitic restoration
+  (`dont` → `don't`, `hes` → `he's`). On the bundled corpus this resolves 21 of
+  38 out-of-vocabulary words, and does so *more accurately* than the neural
+  model, which returned `D AA1 N T` for `dont` and `TH AE1 T S` for `thats`.
+- `phonemes_for_word(word)` – ARPAbet phonemes, reassembled from the syllable
+  split for dictionary words and from `g2p_en` for the rest.
+- `extract_syllables(...)` – the main entry point; returns `Syllable` objects with
+  onset, nucleus, coda, position and `is_terminal` filled in.
+- `heuristic_syllables(...)` – fallback for words CMUdict does not contain: start
+  a new syllable at each vowel, attach following consonants as the coda.
+- `process_line` / `process_verse` – assemble `Line` and `Verse` objects.
 
----
-
-## 5. Rhyme Engine (`src/engine.py`) <a name="engine"></a>
-
-### Constants
-- `CONSONANT_FAMILIES`: maps phonemes (e.g., `"K"`) to groups (`"PLO"`, `"NAS"`, etc.). Used to allow slant rhymes.
-
-### Functions
-- `get_syllable_signature(syllable)`: returns a string combining the nucleus (without stress) and the coda where each consonant is replaced by its family. Example: `"AA1 K"` → `"AA-PLO"`. If no coda, returns just the nucleus.
-
-- `assign_rhyme_labels(verse, min_occurrences=3, tail_window=None)`:  
-  1. **Count** – collects signatures from all syllables (or only the last `tail_window` syllables of each line if `tail_window` is specified).  
-  2. **Filter** – keeps only signatures with count ≥ `min_occurrences`.  
-  3. **Label** – uses `RhymeRegistry` to assign letters (A, B, C…) to each frequent signature.  
-  4. **Assign** – stores the label in `syllable.rhyme_label` and also in `line.rhyme_label` (for convenience).
-
-### Class `RhymeRegistry`
-- Internal mapping from signature to label letter. Uses alphabet `"ABCDEFGHIJKLMNOPQRSTUVWXYZ"` (wraps around if more than 26).
+Both backends are constructed lazily. `G2p()` costs ~3.8s to build, and is only
+needed for genuinely unknown words; building it at import time made every
+command pay it, including `make test`.
 
 ---
 
-## 6. Colour Visualisation (`src/visual.py`) <a name="visual"></a>
+## 5. Rhyme engine (`src/engine.py`) <a name="engine"></a>
 
-- `COLORS`: list of ANSI background colour codes (black text). Extended palette (18 colours) to avoid collisions.
-- `VisualEngine`:
-  - `_get_color(label)`: returns the ANSI code for a given label, assigning a new colour on first encounter.
-  - `_format_word(word)`: iterates over the word’s syllables; if a syllable has a `rhyme_label`, it wraps its `text` with the corresponding colour code.
-  - `display(verse)`: prints the lyrics line by line, colouring each syllable according to its rhyme label. No line labels are shown.
+### `label_for_index(i)`
+Maps `0,1,2,…` to `A,B,…,Z,AA,AB,…`. The previous implementation indexed a
+26-letter alphabet modulo its length, so the 27th group silently reused the first
+group's label. A single dense verse exceeds 26 groups easily — *Rap God* produces
+56 — so this corrupted real output rather than an edge case.
 
----
+### `encode_coda(coda, use_consonant_families=False)`
+Renders a coda as a signature fragment. With `use_consonant_families` each
+consonant is replaced by its natural class from `CONSONANT_FAMILIES`
+(NAS, PLO, SIB, FRI, LIQ, GLI, ASP), which is what lets `loud` and `out` — both
+`AW` + plosive — group together.
 
-## 7. Batch Statistics (`scripts/generate_stats.py`) <a name="stats"></a>
+> Earlier versions of this document stated that signatures used consonant
+> families by default. They did not: `CONSONANT_FAMILIES` was defined and never
+> referenced, and the signature used the raw coda. Family encoding is now
+> implemented and available, but **off by default** so the exact-match behaviour
+> stays reproducible as an evaluation baseline.
 
-Reads a CSV file (default `dataset/lyrics_raw.csv`) containing columns `track_name`, `artist`, and `artist_verses` (or `raw_lyrics`). For each row:
-- Calls `process_verse()` to build a `Verse`.
-- Calls `assign_rhyme_labels` with `min_occurrences=3`, `tail_window=None` (analyse all syllables).
-- Computes:
-  - `Density`: percentage of syllables that have a `rhyme_label`.
-  - `Multi`: diversity = (number of distinct rhyme signatures / total syllables) × 100.
-  - `Signatures`: number of distinct rhyme signatures.
-  - `Syll.`: total syllable count.
-- Appends the results to a list, then exports to `data/stats.csv`.
+### `get_syllable_signature(syllable, use_consonant_families=False, include_stress=True)`
+Returns `"{vowel}_{stress}_{coda}"`, or `""` for syllables that should be
+ignored — currently unstressed syllables that are not line-final.
 
-Run with `make stats` or `python -m scripts.generate_stats`.
+### `candidate_syllables(line, tail_window=None, only_terminal=False)`
+Which syllables of a line may carry a label. `only_terminal` keeps just the
+line-final syllable (classic end rhyme); `tail_window` keeps the last N.
+`only_terminal` was previously accepted as a parameter and ignored.
 
----
+### `assign_rhyme_labels(verse, ...)`
+Two passes — count every signature, then label those reaching
+`min_occurrences`. Returns the `RhymeRegistry` it used.
 
-## 8. Analysis & Plotting (`analysis/`) <a name="analysis"></a>
-
-### `config.py`
-- Defines `PROJECT_ROOT`, `DATA_DIR`, `STATS_FILE`, `FIGURES_DIR`, and a default colour palette.
-
-### `data_loader.py`
-- `load_stats()`: reads `stats.csv` into a DataFrame.
-- `get_artist_means()`: returns a DataFrame with mean values per artist.
-
-### `plots.py`
-- `scatter_all_morceaux()`: scatter plot Density vs Multi, one point per track, coloured by artist.
-- `scatter_artist_averages()`: scatter plot of mean Density vs mean Multi per artist, with labels.
-- `boxplot_density()`: boxplot of Density by artist.
-- `similarity_heatmap()`: cosine similarity heatmap for tracks of a given artist (features: Density, Multi, Signatures, Syll.). Names are truncated, annotations removed if more than 15 tracks, figure size adjusts dynamically.
-
-### `run_all_plots.py`
-- Calls all plotting functions and saves the figures to `data/` as PNG files.
-- Generates heatmaps only for artists with between 2 and 20 tracks (configurable).
-
-Run with `make plots` or `python -m analysis.run_all_plots`.
+> `line.rhyme_label` exists on the model but is **not** written by this function,
+> contrary to earlier documentation. Labels live on syllables.
 
 ---
 
-## 9. Makefile Commands <a name="makefile"></a>
+## 6. Metrics (`src/metrics.py`) <a name="metrics"></a>
 
-| Command          | Action                                                     |
-|------------------|------------------------------------------------------------|
-| `make install`   | Install dependencies from `requirements.txt`.              |
-| `make test`      | Run unit tests (`./run_tests.sh`).                         |
-| `make stats`     | Generate `data/stats.csv` (batch analysis).                |
-| `make plots`     | Produce all graphs (scatter, boxplot, heatmaps).           |
-| `make demo`      | Run the Eminem demo (`python -m src.main`).                |
-| `make clean`     | Remove `__pycache__`, `data/*.png`, `data/stats.csv`.      |
-| `make all`       | Execute `stats`, `plots`, `demo` in sequence.              |
+| Metric | Definition |
+|---|---|
+| `density` | % of syllables carrying any rhyme label |
+| `multi` | % of syllables inside a run of ≥2 consecutive syllables sharing **the same** label |
+| `diversity` | distinct groups / total syllables |
+| `signatures` | number of distinct groups |
+| `syllables` | total syllable count |
 
----
-
-## 10. Testing <a name="testing"></a>
-
-Unit tests are in `tests/`:
-- `test_models.py`: verifies dataclass creation.
-- `test_phonetics.py`: tests cleaning, syllable extraction (on sample words).
-
-Run with `./run_tests.sh` or `make test`. All tests should pass.
+> Two different formulas were previously both exported as "Multi":
+> `generate_stats.py` computed signature *diversity*, while `analyzer.py` counted
+> adjacent labelled syllables **without checking the labels matched**. They fed
+> the same CSV column and the same plots. The names are now distinct and the
+> adjacency check is real.
 
 ---
 
-## 11. Dependencies <a name="dependencies"></a>
+## 7. Visualisation (`src/visual.py`) <a name="visual"></a>
 
-See `requirements.txt`:
-g2p_en
-syllabify
-pandas
-matplotlib
-seaborn
-numpy
-scikit-learn
-
-All are available on PyPI. Install with `make install` or `pip install -r requirements.txt`.
+`VisualEngine.display(verse, legend=False)` prints the verse with each labelled
+syllable on a coloured background, and optionally lists the groups by size.
+Escape codes are suppressed when `NO_COLOR` is set or stdout is not a TTY.
 
 ---
 
-## 12. Pipeline Summary <a name="pipeline"></a>
-Raw lyrics → clean_word → g2p_en & syllabify → Syllable objects
-↓
-get_syllable_signature → signature (e.g., "AA-PLO")
-↓
-assign_rhyme_labels → count signatures → filter by min_occurrences → assign letters
-↓
-visual.py → coloured terminal output
-↓
-generate_stats.py → compute Density, Multi, Signatures, Syll. → stats.csv
-↓
-analysis/plots → scatter, boxplot, similarity heatmaps
+## 8. Batch analysis <a name="batch"></a>
 
+`src/analyzer.py` owns the corpus pipeline; `scripts/generate_stats.py` is a thin
+CLI over it. Previously each file carried its own copy of the loop with divergent
+metric definitions.
+
+```bash
+python -m scripts.generate_stats --input CSV --output CSV [--min-occurrences N]
+                                 [--tail-window N] [--only-terminal] [--max-rows N]
+```
+
+The default input is `dataset/artists_sample.csv`. The previous default pointed
+at `dataset/lyrics_raw.csv`, which is not in the repository, so the target failed
+with a traceback; a missing or malformed dataset now produces an actionable
+message.
 
 ---
 
-**Last updated:** 2025-04-27  
-**Version:** 1.0 
+## 9. Analysis & plotting (`analysis/`) <a name="analysis"></a>
+
+`run_all_plots.py` generates: `scatter_all`, `artist_averages`,
+`boxplot_density`, `artist_similarity`, `artist_dendrogram`, and a per-track
+similarity heatmap for each featured artist present in the data.
+
+> This module previously did not run at all: it had two `__main__` blocks, imports
+> in the middle of the file, and referenced an undefined `df`, so `make plots`
+> raised `NameError`. The artist-similarity and dendrogram figures were
+> unreachable. It also called `plt.show()` unconditionally, which blocks on a
+> headless machine; the backend is now selected accordingly and figures are
+> closed after saving.
+
+---
+
+## 10. Caching (`src/cache.py`) <a name="caching"></a>
+
+Phoneme and syllable lookups are memoised in memory and in `.cache/*.json`.
+Bump `CACHE_VERSION` when the stored format or lookup semantics change. Disk I/O
+is best-effort: a read-only checkout degrades to the memory tier.
+
+Measured on `dataset/artists_sample.csv`: **7.1s cold → 0.34s warm**.
+
+---
+
+## 11. Makefile <a name="makefile"></a>
+
+| Command | Action |
+|---|---|
+| `make install` | dependencies + NLTK corpora |
+| `make test` | unit tests |
+| `make demo` | colour-code the demo verse |
+| `make stats` | corpus → `data/stats.csv` |
+| `make plots` | all figures |
+| `make web` | export `web/data.js` and open the viewer |
+| `make clean` | remove caches and generated files |
+
+`make web` opens the viewer through Python's `webbrowser` module; it previously
+shelled out to `firefox`.
+
+---
+
+## 12. Testing <a name="testing"></a>
+
+`./run_tests.sh` runs `unittest discover` with the project root as the top-level
+import directory, so no test needs to patch `sys.path`.
+
+- `test_models.py` – dataclass behaviour
+- `test_phonetics.py` – cleaning, backoff, syllabification
+- `test_engine.py` – signatures, label space, candidate selection, labelling
+- `test_metrics.py` – metric definitions
+
+Tests needing the neural fallback skip themselves when the corpora are absent.
+
+---
+
+## 13. Dependencies <a name="dependencies"></a>
+
+See `requirements.txt`. Note that `g2p_en` depends on `distance`, which does not
+build against setuptools 60+; the README and CI workflow both document the
+workaround.
+
+---
+
+**Version:** 2.0.0

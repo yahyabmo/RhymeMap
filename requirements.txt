@@ -1,7 +1,12 @@
-g2p_en
-syllabify
+# Core phonetics
+g2p_en           # grapheme-to-phoneme fallback for out-of-vocabulary words
+syllabify        # CMUdict-backed syllable splitting
+nltk             # corpora used by g2p_en (see `make install`)
+
+# Data and analysis
 pandas
+numpy
 matplotlib
 seaborn
 scikit-learn
-numpy
+scipy            # hierarchical clustering for the artist dendrogram

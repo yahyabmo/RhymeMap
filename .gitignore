@@ -210,3 +210,8 @@ __marimo__/
 
 dataset
 
+
+# RhymeMapper generated artefacts
+.cache/
+web/data.js
+data/stats.csv

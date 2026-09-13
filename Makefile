@@ -1,48 +1,50 @@
-# Makefile for RhymeMapper
+# RhymeMapper
 
-.PHONY: help install test stats plots demo clean
+.PHONY: help install test stats plots demo web clean all
 
 PYTHON = python3
-
-# Directories
-SRC_DIR = src
-SCRIPT_DIR = scripts
-ANALYSIS_DIR = analysis
 DATA_DIR = data
-DATASET_DIR = dataset
+DATASET ?= dataset/artists_sample.csv
 
-# Default target
 help:
-	@echo "RhymeMapper - Makefile commands:"
-	@echo "  make install   Install dependencies (requires pip)"
-	@echo "  make test      Run unit tests"
-	@echo "  make stats     Generate statistics CSV (data/stats.csv)"
-	@echo "  make plots     Generate all analysis plots (scatter, boxplot, heatmaps)"
-	@echo "  make demo      Run the main demo (Eminem example)"
-	@echo "  make clean     Remove generated files (__pycache__, figures, stats)"
-	@echo "  make all       Run stats, plots, and demo in sequence"
+	@echo "RhymeMapper:"
+	@echo "  make install   Install dependencies and NLTK corpora"
+	@echo "  make test      Run the unit tests"
+	@echo "  make demo      Colour-code the demo verse in the terminal"
+	@echo "  make stats     Analyse a corpus -> $(DATA_DIR)/stats.csv"
+	@echo "  make plots     Generate all figures into $(DATA_DIR)/"
+	@echo "  make web       Export web/data.js and open the viewer"
+	@echo "  make clean     Remove caches and generated files"
+	@echo "  make all       stats, plots, then demo"
+	@echo ""
+	@echo "  Override the corpus with: make stats DATASET=path/to.csv"
 
 install:
 	pip install -r requirements.txt
+	$(PYTHON) -m scripts.fetch_nltk_data
 
 test:
 	./run_tests.sh
 
 stats:
-	$(PYTHON) -m scripts.generate_stats
+	$(PYTHON) -m scripts.generate_stats --input $(DATASET)
 
 plots:
 	$(PYTHON) -m analysis.run_all_plots
 
 demo:
-	$(PYTHON) -m src.main
-	$(PYTHON) -m export_for_web
-	firefox web/index.html &
+	$(PYTHON) -m src.main --legend
+
+web:
+	$(PYTHON) -m export_for_web --input $(DATASET)
+	@echo "Opening web/index.html"
+	@$(PYTHON) -c "import pathlib, webbrowser; webbrowser.open(pathlib.Path('web/index.html').resolve().as_uri())" || \
+		echo "Could not open a browser. Open web/index.html manually."
 
 clean:
-	rm -rf $(SRC_DIR)/__pycache__ $(ANALYSIS_DIR)/__pycache__ $(SCRIPT_DIR)/__pycache__ tests/__pycache__
-	rm -f $(DATA_DIR)/stats.csv
-	rm -f $(DATA_DIR)/*.png
+	rm -rf .cache
+	find . -name "__pycache__" -type d -prune -exec rm -rf {} +
 	find . -name "*.pyc" -delete
+	rm -f $(DATA_DIR)/stats.csv $(DATA_DIR)/*.png web/data.js
 
 all: stats plots demo
