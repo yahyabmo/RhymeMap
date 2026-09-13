@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .labeling import ENGINE_SIMILARITY, label_verse
+from .labeling import ENGINE_CHAINS, label_verse
 from .metrics import compute_metrics, metrics_to_row
 from .phonetics import process_verse
 
@@ -73,7 +73,7 @@ def analyze_dataset(
     only_terminal: bool = False,
     max_rows=None,
     progress=False,
-    engine: str = ENGINE_SIMILARITY,
+    engine: str = ENGINE_CHAINS,
     **engine_options,
 ) -> list[dict]:
     """Analyse every verse in a CSV and return metric rows, densest first."""

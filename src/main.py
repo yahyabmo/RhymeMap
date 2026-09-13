@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .analyzer import DEFAULT_DATASET, DatasetError, analyze_dataset
 from .cache import flush_all
-from .labeling import ENGINE_CHOICES, ENGINE_HELP, ENGINE_SIMILARITY, label_verse
+from .labeling import ENGINE_CHAINS, ENGINE_CHOICES, ENGINE_HELP, label_verse
 from .metrics import compute_metrics
 from .phonetics import process_verse
 from .visual import VisualEngine
@@ -71,7 +71,7 @@ def main(argv=None) -> int:
     parser.add_argument("--legend", action="store_true", help="list the rhyme groups after the verse")
     parser.add_argument("--dataset", default=DEFAULT_DATASET, help="corpus CSV for the summary table")
     parser.add_argument("--no-dataset", action="store_true", help="skip the corpus table")
-    parser.add_argument("--engine", "-e", default=ENGINE_SIMILARITY, choices=ENGINE_CHOICES,
+    parser.add_argument("--engine", "-e", default=ENGINE_CHAINS, choices=ENGINE_CHOICES,
                         help="; ".join(f"{k}: {v}" for k, v in ENGINE_HELP.items()))
     args = parser.parse_args(argv)
 

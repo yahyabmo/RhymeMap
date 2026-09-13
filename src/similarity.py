@@ -47,6 +47,18 @@ DEFAULT_WEIGHTS = {
 
     # Pairs scoring below this are treated as unrelated when clustering.
     "cluster_threshold": 0.78,
+
+    # Chain detection only. Every position of a multisyllabic window must clear
+    # this floor, not just the window's mean. Averaging alone let a 5-syllable
+    # window pass on two good positions and three bad ones, which swept ~99% of
+    # a verse into some chain.
+    "min_position_similarity": 0.70,
+
+    # Extra similarity demanded of the final syllable of a window. Multisyllabic
+    # rhymes are anchored at their end: "levitatin'"/"devastatin'" agree most
+    # tightly on the last syllable, and a window whose end does not match is two
+    # spans that happen to abut.
+    "anchor_similarity": 0.80,
 }
 
 

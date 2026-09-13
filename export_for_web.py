@@ -12,7 +12,7 @@ from pathlib import Path
 
 from src.analyzer import DEFAULT_DATASET, DatasetError, iter_verses
 from src.cache import flush_all
-from src.labeling import ENGINE_CHOICES, ENGINE_SIMILARITY, label_verse
+from src.labeling import ENGINE_CHAINS, ENGINE_CHOICES, label_verse
 from src.metrics import compute_metrics
 from src.phonetics import process_verse
 
@@ -64,7 +64,7 @@ def main(argv=None) -> int:
     parser.add_argument("--limit", "-n", type=int, default=None, help="export at most N verses (default: all)")
     parser.add_argument("--min-occurrences", type=int, default=2, help="minimum signature count to label")
     parser.add_argument("--tail-window", type=int, default=None, help="only label the last N syllables per line")
-    parser.add_argument("--engine", "-e", default=ENGINE_SIMILARITY, choices=ENGINE_CHOICES, help="rhyme engine")
+    parser.add_argument("--engine", "-e", default=ENGINE_CHAINS, choices=ENGINE_CHOICES, help="rhyme engine")
     args = parser.parse_args(argv)
 
     try:

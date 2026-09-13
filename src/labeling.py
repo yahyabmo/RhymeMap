@@ -11,17 +11,19 @@ from __future__ import annotations
 ENGINE_EXACT = "exact"
 ENGINE_FAMILIES = "families"
 ENGINE_SIMILARITY = "similarity"
+ENGINE_CHAINS = "chains"
 
-ENGINE_CHOICES = (ENGINE_EXACT, ENGINE_FAMILIES, ENGINE_SIMILARITY)
+ENGINE_CHOICES = (ENGINE_EXACT, ENGINE_FAMILIES, ENGINE_SIMILARITY, ENGINE_CHAINS)
 
 ENGINE_HELP = {
     ENGINE_EXACT: "v1 baseline: group syllables whose vowel+stress+coda match exactly",
     ENGINE_FAMILIES: "exact matching, with coda consonants replaced by natural class",
     ENGINE_SIMILARITY: "cluster syllables on a continuous articulatory rhyme score",
+    ENGINE_CHAINS: "detect repeated multisyllabic spans (default)",
 }
 
 
-def label_verse(verse, engine: str = ENGINE_SIMILARITY, **kwargs):
+def label_verse(verse, engine: str = ENGINE_CHAINS, **kwargs):
     """Label ``verse`` in place with the named engine; returns its registry.
 
     Unsupported keyword arguments are dropped rather than raising, so callers
@@ -29,6 +31,16 @@ def label_verse(verse, engine: str = ENGINE_SIMILARITY, **kwargs):
     """
     if engine not in ENGINE_CHOICES:
         raise ValueError(f"unknown engine {engine!r}; choose from {', '.join(ENGINE_CHOICES)}")
+
+    if engine == ENGINE_CHAINS:
+        from .chains import assign_chain_labels
+
+        allowed = {"weights", "threshold", "max_window", "min_occurrences", "max_line_gap"}
+        assign_chain_labels(verse, **{k: v for k, v in kwargs.items() if k in allowed})
+        # Chains own the labels directly; there is no signature registry.
+        from .engine import RhymeRegistry
+
+        return RhymeRegistry()
 
     if engine == ENGINE_SIMILARITY:
         from .similarity import assign_similarity_labels

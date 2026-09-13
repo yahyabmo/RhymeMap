@@ -6,6 +6,7 @@
 4. [Phonetics](#phonetics)
 5. [Rhyme engine](#engine)
 5b. [Similarity engine](#similarity)
+5c. [Chain detection](#chains)
 6. [Metrics](#metrics)
 7. [Visualisation](#visual)
 8. [Batch analysis](#batch)
@@ -210,6 +211,80 @@ On the bundled corpus:
 These numbers show the engines behave *differently*, not that one is *better* —
 a higher density is equally consistent with over-grouping. Phase 4 settles that
 against a hand-annotated gold set.
+
+---
+
+## 5c. Chain detection (`src/chains.py`) <a name="chains"></a>
+
+Per-syllable labelling cannot represent the structure a listener actually hears.
+In
+
+    levitatin' / devastatin' / demonstratin'
+
+every syllable gets assigned to whichever group its own sound falls in, and the
+four-syllable repeat is never represented. `src/chains.py` looks for repeated
+*spans* instead.
+
+### Method
+
+1. Flatten the verse into a syllable stream carrying `(line_id, word_id, syl_index)`.
+2. Slide windows of 1..`max_window` syllables, never crossing a line break.
+3. Cluster windows of equal length; the pairwise score is the mean of the
+   per-syllable scores at each position.
+4. Split each cluster by locality, then keep clusters recurring at least
+   `min_occurrences` times.
+5. Assign greedily, **longest first**, so a long chain claims its syllables
+   before the fragments inside it can.
+
+`strength = length × mean_similarity × occurrence_count` is reported for each
+chain and orders chains *of equal length*.
+
+### Three constraints that the first version lacked
+
+**Selection order.** Ranking candidates by strength alone does not work: strength
+is proportional to occurrence count, so a one-syllable "chain" recurring 153
+times (strength 147) outranks a four-syllable chain recurring three times
+(strength ~11). Ordering by strength let short chains claim the whole verse
+before a long one was considered — the exact shredding this module exists to
+prevent. Length is therefore the primary sort key.
+
+**Per-position floor and end anchor.** A window's mean similarity can clear the
+threshold on two strong positions while the rest disagree. Every position must
+now reach `min_position_similarity`, and the final position must reach
+`anchor_similarity`, because multisyllabic rhymes are anchored at their end.
+
+**Locality.** Rhyme is local. Without a proximity constraint every syllable joins
+some chain, because in a 1476-syllable verse drawn from ~400 distinct sounds any
+span finds a partner *somewhere* — 80 lines away, where no listener hears it.
+Raising the similarity threshold does not fix this; at 0.94 coverage was still
+91%. `max_line_gap` (default 2, a couplet) is the constraint that was missing:
+
+| Max line gap | Chain density | Multisyllabic coverage |
+|---|---|---|
+| 1 | 78.3% | 41.0% |
+| 2 (default) | 86.0% | 47.6% |
+| 4 | 91.9% | 54.9% |
+| none | 99.3% | 79.7% |
+
+### Result on the demo verse
+
+Detection takes ~2.5s for 1476 syllables. The strongest long chains it recovers:
+
+| Length | Occurrences | Similarity | Example |
+|---|---|---|---|
+| 5 | 4 | 0.94 | `straight face lookin' boy` / `take place lookin' boy` |
+| 5 | 3 | 0.93 | `is ricochetin'` / `I'm devastatin'` / `it's levitatin'` |
+| 5 | 2 | 0.96 | `a Rap God Rap God` / `the back nod back nod` |
+| 5 | 2 | 0.96 | `honesty's brutal` / `honestly futile` |
+
+### Metrics
+
+`chain_metrics(verse, chains)` reports `chain_density`, `multi_score` (coverage
+by chains of length ≥ 2), `chains`, `longest_chain` and `mean_chain_length`.
+
+`metrics.compute_metrics` stays the engine-agnostic view and agrees on density.
+Its `multi` runs about two points higher because it also counts two *adjacent*
+occurrences of a one-syllable chain as a run, which `chain_metrics` does not.
 
 ---
 
