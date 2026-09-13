@@ -93,6 +93,21 @@ it and costs no bandwidth or disk.
 No link? Paste lyrics directly, or point the tool at a local file with
 `--file lyrics.txt`.
 
+## Online
+
+`make site` builds a read-only demo — songs analysed at build time, no server —
+and `.github/workflows/pages.yml` publishes it to GitHub Pages for free. Enable
+**Settings → Pages → Source: GitHub Actions** once and it deploys on every push
+to `main`.
+
+The full version, which analyses new links, needs Python running; the included
+`Dockerfile` deploys to Hugging Face Spaces or Render on their free tiers. One
+caveat worth knowing first: YouTube blocks datacenter IPs, so the link box is
+much less reliable from a cloud host than from your own machine. Pasting lyrics
+is unaffected.
+
+Full instructions: [docs/DEPLOY.md](./docs/DEPLOY.md)
+
 ## The interface
 
 `make serve` opens the full interface; `make web` produces a static page with the

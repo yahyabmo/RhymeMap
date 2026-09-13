@@ -235,8 +235,11 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--port", "-p", type=int, default=8000)
-    parser.add_argument("--host", default="127.0.0.1")
+    # PORT and HOST come from the environment when deployed: every container
+    # host (Hugging Face Spaces, Render, Fly, Railway) assigns the port and
+    # expects the process to listen on all interfaces, not loopback.
+    parser.add_argument("--port", "-p", type=int, default=int(os.environ.get("PORT", 8000)))
+    parser.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
     parser.add_argument("--no-browser", action="store_true", help="do not open a browser")
     args = parser.parse_args(argv)
 
@@ -246,8 +249,8 @@ def main(argv=None) -> int:
 
     url = f"http://{args.host}:{args.port}/"
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"RhymeMapper viewer on {url}  (Ctrl-C to stop)")
-    if not args.no_browser:
+    print(f"RhymeMapper viewer on {url}  (Ctrl-C to stop)", flush=True)
+    if not args.no_browser and args.host in {"127.0.0.1", "localhost"}:
         try:
             webbrowser.open(url)
         except Exception:

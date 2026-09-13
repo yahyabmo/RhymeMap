@@ -392,6 +392,18 @@ body::after {
 }
 .hero-hint button:hover { color: var(--flame); }
 
+/* Shown only in the static build; see `isStatic` in app.js. */
+.static-note { display: none; }
+body.is-static .static-note {
+  display: block;
+  max-width: 62ch;
+  margin: var(--gap) auto 0;
+  font-size: .78rem;
+  color: var(--ink-3);
+}
+body.is-static .static-note a { color: var(--flame); }
+body.is-static .linkbar { opacity: .55; }
+
 .status { min-height: 22px; margin-top: var(--gap); font-size: .82rem; color: var(--ink-2); }
 .status.error { color: var(--danger); }
 .status.working { color: var(--pulse); font-family: var(--font-mono); }

@@ -394,7 +394,18 @@ async function post(path, body) {
   return payload;
 }
 
+/* The static build (GitHub Pages) ships pre-analysed songs but has no analysis
+ * backend, so live analysis is unavailable there. It is flagged by a global the
+ * build step writes into data.js, rather than guessed from the protocol -- the
+ * page is served over https in both cases. */
+const isStatic = () => typeof RHYMEMAP_STATIC !== 'undefined' && RHYMEMAP_STATIC;
+
 function requireServer() {
+  if (isStatic()) {
+    setStatus('This is the read-only demo. Run it locally to analyse your own songs — '
+      + 'see the link below.', 'error');
+    return false;
+  }
   if (overHttp()) return true;
   setStatus('Analysing needs the local server — run `make serve`.', 'error');
   return false;
@@ -479,6 +490,8 @@ function populateTracks() {
 
 function init() {
   document.body.classList.add('dim');
+
+  if (isStatic()) document.body.classList.add('is-static');
 
   auroraHandle = Effects.aurora(ui.aurora);
   wavesHandle = Effects.waves(ui.waves);
