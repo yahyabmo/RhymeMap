@@ -1,6 +1,9 @@
 """Export analysed verses to web/data.js for the browser viewer.
 
-    python -m export_for_web [--input CSV] [--limit N]
+    python -m export_for_web [--input CSV] [--limit N] [--engine ENGINE]
+
+The same serialisation is used by ``scripts/serve_web.py`` so that pasted lyrics
+and pre-exported verses reach the page in one shape.
 """
 
 from __future__ import annotations
@@ -20,7 +23,38 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 WEB_DIR = PROJECT_ROOT / "web"
 
 
-def verse_to_dict(verse, artist: str, track: str) -> dict:
+def _group_summary(verse, chains=None) -> list[dict]:
+    """Per-rhyme-group summary, strongest first.
+
+    With the chain engine the strength is the chain's own
+    ``length x similarity x occurrences``; otherwise it is the syllable count,
+    so the list is ordered sensibly either way.
+    """
+    counts: dict[str, int] = {}
+    for syl in verse.syllables():
+        if syl.rhyme_label:
+            counts[syl.rhyme_label] = counts.get(syl.rhyme_label, 0) + 1
+
+    by_label = {c.label: c for c in (chains or [])}
+    groups = []
+    for label, count in counts.items():
+        chain = by_label.get(label)
+        groups.append({
+            "label": label,
+            "syllables": count,
+            "length": chain.length if chain else 1,
+            "occurrences": len(chain.occurrences) if chain else count,
+            "similarity": round(chain.similarity, 3) if chain else None,
+            "strength": round(chain.strength, 2) if chain else float(count),
+        })
+    # Longest first, then strongest. Pure strength ordering buries the
+    # multisyllabic chains beneath one-syllable groups that simply recur a lot,
+    # and the long chains are the structure worth looking at.
+    groups.sort(key=lambda g: (-g["length"], -g["strength"], g["label"]))
+    return groups
+
+
+def verse_to_dict(verse, artist: str, track: str, engine: str, chains=None, text: str = "") -> dict:
     """Serialise a labelled verse, keeping the phonetic detail for tooltips."""
     lines = []
     for line in verse.lines:
@@ -33,25 +67,47 @@ def verse_to_dict(verse, artist: str, track: str) -> dict:
                         "text": syl.text,
                         "label": syl.rhyme_label,
                         "nucleus": syl.nucleus,
-                        "coda": "".join(syl.coda),
-                        "onset": "".join(syl.onset),
+                        "coda": " ".join(syl.coda),
+                        "onset": " ".join(syl.onset),
                     }
                     for syl in word.syllables
                 ],
             })
         lines.append(words)
-    return {"artist": artist, "track": track, "lines": lines, "metrics": compute_metrics(verse)}
+
+    return {
+        "artist": artist,
+        "track": track,
+        "engine": engine,
+        # Kept so the viewer can re-run another engine over the same verse.
+        "text": text or "\n".join(line.text for line in verse.lines),
+        "lines": lines,
+        "metrics": compute_metrics(verse),
+        "groups": _group_summary(verse, chains),
+    }
 
 
-def build(csv_path: str, limit: int | None, min_occurrences: int, tail_window, engine: str) -> list[dict]:
+def analyse_text(lyrics: str, artist: str, track: str, engine: str = ENGINE_SIMILARITY,
+                 min_occurrences: int = 2, tail_window=None) -> dict:
+    """Run the pipeline over raw lyrics and return the viewer payload."""
+    verse = process_verse(lyrics, artist=artist)
+    chains = None
+    if engine == "chains":
+        from src.chains import assign_chain_labels
+
+        chains = assign_chain_labels(verse, min_occurrences=min_occurrences)
+    else:
+        label_verse(verse, engine=engine, min_occurrences=min_occurrences, tail_window=tail_window)
+    return verse_to_dict(verse, artist, track, engine, chains, text=lyrics)
+
+
+def build(csv_path: str, limit, min_occurrences: int, tail_window, engine: str) -> list[dict]:
     verses = []
     for track, artist, lyrics in iter_verses(csv_path):
         if limit is not None and len(verses) >= limit:
             break
         try:
-            verse = process_verse(lyrics, artist=artist)
-            label_verse(verse, engine=engine, min_occurrences=min_occurrences, tail_window=tail_window)
-            verses.append(verse_to_dict(verse, artist, track))
+            verses.append(analyse_text(lyrics, artist, track, engine, min_occurrences, tail_window))
         except Exception as exc:
             print(f"  !! {track}: {type(exc).__name__}: {exc}")
     return verses
@@ -61,10 +117,11 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--input", "-i", default=DEFAULT_DATASET, help=f"lyrics CSV (default: {DEFAULT_DATASET})")
     parser.add_argument("--output", "-o", default=str(WEB_DIR / "data.js"), help="output JS file")
-    parser.add_argument("--limit", "-n", type=int, default=None, help="export at most N verses (default: all)")
+    parser.add_argument("--limit", "-n", type=int, default=None, help="export at most N verses")
     parser.add_argument("--min-occurrences", type=int, default=2, help="minimum signature count to label")
     parser.add_argument("--tail-window", type=int, default=None, help="only label the last N syllables per line")
     parser.add_argument("--engine", "-e", default=ENGINE_SIMILARITY, choices=ENGINE_CHOICES, help="rhyme engine")
+    parser.add_argument("--demo", action="store_true", help="also include dataset/demo_rap_god.txt")
     args = parser.parse_args(argv)
 
     try:
@@ -72,6 +129,11 @@ def main(argv=None) -> int:
     except DatasetError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+    demo = PROJECT_ROOT / "dataset" / "demo_rap_god.txt"
+    if args.demo and demo.exists():
+        verses.insert(0, analyse_text(demo.read_text(encoding="utf-8"), "Eminem",
+                                      "Rap God (full verse)", args.engine, args.min_occurrences))
 
     if not verses:
         print(f"error: nothing to export from {args.input}", file=sys.stderr)
@@ -85,8 +147,7 @@ def main(argv=None) -> int:
         handle.write(";\n")
     flush_all()
 
-    size_kb = output.stat().st_size / 1024
-    print(f"exported {len(verses)} verses to {output} ({size_kb:.0f} KB)")
+    print(f"exported {len(verses)} verses to {output} ({output.stat().st_size / 1024:.0f} KB)")
     return 0
 
 

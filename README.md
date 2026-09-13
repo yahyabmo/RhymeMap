@@ -26,6 +26,7 @@ make demo           # colour-code the demo verse in the terminal
 make stats          # analyse a corpus -> data/stats.csv
 make plots          # generate every figure into data/
 make web            # export web/data.js and open the browser viewer
+make serve          # viewer + live analysis of lyrics you paste in
 make test           # run the unit tests
 make eval           # gold set, ablation table, artist-ID experiment
 ```
@@ -66,6 +67,26 @@ before falling back to the neural grapheme-to-phoneme model.
 | **Diversity** | distinct rhyme groups / total syllables |
 | **Signatures** | number of distinct rhyme groups |
 | **Syll.** | total syllable count |
+
+## The viewer
+
+`make web` opens a static page with the bundled verses pre-analysed. `make serve`
+adds a local server so you can paste your own lyrics and switch engines live.
+
+- Hover any syllable and every syllable in its rhyme group lights up across the
+  whole verse; the tooltip shows the onset, nucleus and coda behind the match.
+- The sidebar lists rhyme groups longest-first. Click one to isolate it and dim
+  everything else — this is what makes a multisyllabic chain such as
+  `straight face lookin' boy` / `take place lookin' boy` / `they say lookin' boy`
+  visible as a single structure.
+- Switching the engine re-analyses the verse on screen, so the v1 baseline and
+  the current engine can be compared on the same lyrics.
+
+Analysis runs on a small local server rather than in JavaScript, because CMUdict
+is several megabytes and a second implementation of the phonetic engine would
+drift from the Python one — and then the browser and the terminal would disagree
+about what rhymes. The static page still works with no server; only the paste box
+and engine switching need it.
 
 ## Does it work?
 

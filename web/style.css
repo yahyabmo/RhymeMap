@@ -1,15 +1,18 @@
 :root {
-  --bg: #1e1e2e;
-  --surface: #2a2a3c;
-  --text: #e0e0e0;
+  --bg: #14141c;
+  --surface: #1e1e2a;
+  --surface-2: #272736;
+  --line: #33334a;
+  --text: #e6e6ef;
+  --muted: #9a9ab0;
   --accent: #ff9f43;
-  --highlight: #ffff00;
+  --radius: 8px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
@@ -18,148 +21,202 @@ body {
   flex-direction: column;
 }
 
+/* ---------- header ---------- */
+
 header {
   background: var(--surface);
-  padding: 1rem 2rem;
+  border-bottom: 2px solid var(--accent);
+  padding: 0.9rem 1.25rem;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  border-bottom: 2px solid var(--accent);
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
-h1 { font-size: 1.8rem; color: var(--accent); }
+.brand { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+h1 { font-size: 1.35rem; color: var(--accent); letter-spacing: 0.01em; }
+.tagline { color: var(--muted); font-size: 0.85rem; }
 
-#controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.8rem;
-  align-items: center;
-}
+.controls { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: flex-end; }
+.controls label { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.72rem; color: var(--muted); }
 
-select, button {
+select, button, textarea {
   background: var(--bg);
   color: var(--text);
-  border: 1px solid var(--accent);
-  padding: 0.4em 1em;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.95rem;
+  border: 1px solid var(--line);
+  padding: 0.4em 0.8em;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-family: inherit;
 }
-select:hover, button:hover {
-  background: var(--accent);
-  color: #000;
+select, button { cursor: pointer; }
+button:hover, select:hover { border-color: var(--accent); }
+button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+button:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
+
+/* ---------- paste panel ---------- */
+
+/* An id or class selector that sets `display` outranks the browser's
+ * `[hidden] { display: none }`, so a hidden element stays visible. These two
+ * rules restore it; without them the paste panel was open on first load. */
+#pastePanel[hidden], .stats[hidden] { display: none; }
+
+#pastePanel {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+#lyricsInput { width: 100%; resize: vertical; line-height: 1.5; }
+.paste-actions { display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap; }
+#pasteStatus { color: var(--muted); font-size: 0.85rem; }
+#pasteStatus.error { color: #ff7b72; }
+
+/* ---------- stats ---------- */
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+.stat {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.7rem;
+  min-width: 88px;
+}
+.stat .value { display: block; font-size: 1.05rem; font-weight: 600; color: var(--accent); }
+.stat .name { display: block; font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* ---------- layout ---------- */
 
 main {
   flex: 1;
-  padding: 2rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 270px;
+  gap: 1.25rem;
+  padding: 1.25rem;
+  align-items: start;
+}
+
+.lyrics {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  font-size: 1.02rem;
+  overflow-wrap: break-word;
+}
+.placeholder { color: var(--muted); }
+
+.line { padding: 0.12rem 0; }
+.line + .line { margin-top: 0.1rem; }
+.word { display: inline-block; margin-right: 0.42em; }
+
+.syllable {
+  border-radius: 3px;
+  padding: 0 1px;
+  transition: opacity 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+.syllable.rhyme { color: #10101a; font-weight: 600; cursor: pointer; }
+.syllable.plain { color: var(--text); }
+
+/* Dim mode hides the noise so the scheme stands out. */
+body.dim .syllable.plain { opacity: 0.38; }
+
+/* Tracing one group. */
+body.tracing .syllable.rhyme:not(.traced) { opacity: 0.12; filter: saturate(0.3); }
+body.tracing .syllable.plain { opacity: 0.08; }
+.syllable.traced {
+  box-shadow: 0 0 0 2px #fff, 0 0 10px 2px rgba(255, 255, 255, 0.35);
+  filter: brightness(1.2);
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- sidebar ---------- */
+
+#sidebar {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem;
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 110px);
   overflow-y: auto;
 }
+#sidebar h2 { font-size: 0.95rem; color: var(--accent); margin-bottom: 0.2rem; }
+.hint { font-size: 0.76rem; color: var(--muted); margin-bottom: 0.7rem; }
 
-#lyricsContainer {
-  max-width: 900px;
-  margin: 0 auto;
-  background: var(--surface);
-  border-radius: 12px;
-  padding: 2rem;
-  box-shadow: 0 4px 20px rgba(255,159,67,0.2);
-}
-
-.line {
+.group-list { list-style: none; display: flex; flex-direction: column; gap: 0.3rem; }
+.group-item {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.3em;
-  margin-bottom: 0.8em;
-}
-.word {
-  display: inline-flex;
-  white-space: nowrap;
-}
-.syllable {
-  padding: 0.1em 0.15em;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-
-/* 26 couleurs pour les rimes A-Z */
-.syllable.rhyme-a { background: #e74c3c; }   /* rouge */
-.syllable.rhyme-b { background: #2ecc71; }   /* vert */
-.syllable.rhyme-c { background: #3498db; }   /* bleu */
-.syllable.rhyme-d { background: #f1c40f; }   /* jaune */
-.syllable.rhyme-e { background: #9b59b6; }   /* violet */
-.syllable.rhyme-f { background: #e67e22; }   /* orange */
-.syllable.rhyme-g { background: #1abc9c; }   /* turquoise */
-.syllable.rhyme-h { background: #e84393; }   /* rose */
-.syllable.rhyme-i { background: #00cec9; }   /* cyan */
-.syllable.rhyme-j { background: #fd79a8; }   /* rose clair */
-.syllable.rhyme-k { background: #6c5ce7; }   /* indigo */
-.syllable.rhyme-l { background: #a29bfe; }   /* lavande */
-.syllable.rhyme-m { background: #fab1a0; }   /* pêche */
-.syllable.rhyme-n { background: #81ecec; }   /* menthe */
-.syllable.rhyme-o { background: #ffeaa7; }   /* sable */
-.syllable.rhyme-p { background: #55efc4; }   /* émeraude */
-.syllable.rhyme-q { background: #74b9ff; }   /* bleu ciel */
-.syllable.rhyme-r { background: #dfe6e9; color: #000; } /* gris clair */
-.syllable.rhyme-s { background: #b2bec3; }   /* gris */
-.syllable.rhyme-t { background: #d63031; }   /* rouge sombre */
-.syllable.rhyme-u { background: #0984e3; }   /* bleu vif */
-.syllable.rhyme-v { background: #6c5ce7; }   /* violet foncé */
-.syllable.rhyme-w { background: #636e72; }   /* gris foncé */
-.syllable.rhyme-x { background: #e17055; }   /* terre cuite */
-.syllable.rhyme-y { background: #00b894; }   /* vert forêt */
-.syllable.rhyme-z { background: #fdcb6e; }   /* moutarde */
-
-.syllable.no-rhyme {
-  opacity: 0.4;
-}
-
-.highlight-group {
-  outline: 2px dashed var(--highlight);
-  outline-offset: 2px;
-}
-
-/* Boutons de groupes */
-#groupButtons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4em;
-}
-
-.group-btn {
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--accent);
-  padding: 0.3em 0.6em;
-  border-radius: 4px;
-  font-size: 0.85rem;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
   cursor: pointer;
-  transition: background 0.2s, color 0.2s, border-color 0.2s;
+  font-size: 0.83rem;
 }
+.group-item:hover { background: var(--surface-2); }
+.group-item.active { border-color: var(--accent); background: var(--surface-2); }
+.swatch { width: 15px; height: 15px; border-radius: 3px; flex: none; }
+.group-meta { color: var(--muted); font-size: 0.75rem; margin-left: auto; text-align: right; }
 
-.group-btn:hover {
-  background: var(--accent);
-  color: #000;
-}
+/* ---------- tooltip ---------- */
 
-.group-btn.active {
-  background: var(--highlight);
-  color: #000;
-  border-color: var(--highlight);
-  font-weight: bold;
+.tooltip {
+  position: fixed;
+  z-index: 40;
+  background: #0d0d14;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  pointer-events: none;
+  max-width: 260px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
 }
+.tooltip b { color: var(--accent); }
+.tooltip .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
 
 footer {
-  text-align: center;
-  padding: 1rem;
-  font-size: 0.85rem;
-  background: var(--surface);
-  border-top: 1px solid var(--accent);
+  padding: 0.9rem 1.25rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  border-top: 1px solid var(--line);
 }
 
-.placeholder {
-  text-align: center;
-  font-style: italic;
-  opacity: 0.7;
+/* ---------- narrow screens ---------- */
+
+@media (max-width: 820px) {
+  main { grid-template-columns: minmax(0, 1fr); }
+  #sidebar { position: static; max-height: none; order: 2; }
+  .lyrics { order: 1; font-size: 0.97rem; }
+  header { padding: 0.75rem 0.9rem; }
+  .controls { width: 100%; }
+  .controls label { flex: 1 1 120px; }
+  .controls button { flex: 1 1 auto; }
+  main, .stats, #pastePanel { padding-left: 0.9rem; padding-right: 0.9rem; }
+  .stat { flex: 1 1 88px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .syllable { transition: none; }
 }
