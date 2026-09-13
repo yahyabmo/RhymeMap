@@ -1,0 +1,69 @@
+# Build the read-only demo and publish it to GitHub Pages.
+#
+# The site is static: songs are analysed here, at build time, and baked into
+# data.js. Nothing runs on the server afterwards, which is why this can be
+# hosted free and permanently.
+#
+# One-time setup: repository Settings -> Pages -> Source: "GitHub Actions".
+
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:      # lets you publish from any branch by hand
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; queue instead, and don't cancel one mid-flight.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        # g2p_en installs with --no-deps: it declares `distance`, which cannot
+        # build against setuptools 60+, and never imports it.
+        run: |
+          python -m pip install --upgrade pip wheel
+          python -m pip install -r requirements.txt
+          python -m pip install --no-deps g2p_en
+
+      - name: Cache NLTK data
+        uses: actions/cache@v4
+        with:
+          path: ~/nltk_data
+          key: nltk-${{ runner.os }}
+
+      - name: Fetch NLTK corpora
+        run: python -m scripts.fetch_nltk_data
+
+      - name: Build the static site
+        run: python -m scripts.build_static --output site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

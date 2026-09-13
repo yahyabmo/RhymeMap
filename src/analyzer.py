@@ -1,70 +1,100 @@
-import csv
-from collections import defaultdict
+"""Batch analysis of a lyrics CSV.
+
+This is the one implementation of the corpus pipeline. ``scripts/generate_stats``
+is a thin CLI over it; previously the two files each carried their own copy of
+the loop with divergent metric definitions.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from .labeling import ENGINE_SIMILARITY, label_verse
+from .metrics import compute_metrics, metrics_to_row
 from .phonetics import process_verse
-from .engine import assign_rhyme_labels, get_syllable_signature
 
-def analyze_dataset(csv_path, min_occurrences=3, tail_window=2, max_rows=None):
-    verse_stats = []
+LYRICS_COLUMNS = ("artist_verses", "raw_lyrics", "lyrics")
+DEFAULT_DATASET = "dataset/artists_sample.csv"
 
-    with open(csv_path, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        for i, row in enumerate(reader):
-            if max_rows is not None and i >= max_rows:
-                break
 
-            artist = row['artist']
-            track = row['track_name']
-            text = row['artist_verses']
-            
-            if not text.strip():
-                continue
+class DatasetError(Exception):
+    """Raised for a missing or unusable dataset, with an actionable message."""
 
-            # Gestion des sauts de ligne dans le CSV
-            text = text.replace('\\n', '\n')
 
-            try:
-                verse = process_verse(text, artist=artist)
-                assign_rhyme_labels(verse, min_occurrences=min_occurrences, tail_window=tail_window)
+def _read_csv(csv_path):
+    import pandas as pd
 
-                # 1. On aplatit toutes les syllabes du vers dans une liste
-                all_syllables = []
-                for line in verse.lines:
-                    for word in line.words:
-                        all_syllables.extend(word.syllables)
+    path = Path(csv_path)
+    if not path.exists():
+        raise DatasetError(
+            f"Dataset not found: {path}\n"
+            f"Expected a CSV with columns: track_name, artist, and one of {', '.join(LYRICS_COLUMNS)}.\n"
+            f"The repository ships {DEFAULT_DATASET}; pass --input to use another file."
+        )
+    try:
+        return pd.read_csv(path)
+    except Exception as exc:
+        raise DatasetError(f"Could not read {path} as CSV: {exc}") from exc
 
-                # 2. Calcul des statistiques locales
-                local_total_syl = len(all_syllables)
-                local_labeled_syl = 0
-                local_sigs = set()
 
-                for syl in all_syllables:
-                    if syl.rhyme_label:
-                        local_labeled_syl += 1
-                        sig = get_syllable_signature(syl)
-                        local_sigs.add(sig)
+def _pick_lyrics_column(df):
+    for column in LYRICS_COLUMNS:
+        if column in df.columns:
+            return column
+    raise DatasetError(
+        f"No lyrics column found. Looked for {', '.join(LYRICS_COLUMNS)}; "
+        f"the file has: {', '.join(map(str, df.columns))}"
+    )
 
-                # 3. Calcul de la densité
-                density = local_labeled_syl / local_total_syl if local_total_syl > 0 else 0
 
-                # 4. Calcul du score multisyllabique (rimes consécutives)
-                multi_rhyme_count = 0
-                for j in range(len(all_syllables) - 1):
-                    if all_syllables[j].rhyme_label and all_syllables[j+1].rhyme_label:
-                        # On vérifie qu'elles appartiennent au même schéma ou simplement qu'elles riment
-                        multi_rhyme_count += 1
+def iter_verses(csv_path=DEFAULT_DATASET, max_rows=None):
+    """Yield ``(track, artist, lyrics)`` triples from a lyrics CSV."""
 
-                multi_score = multi_rhyme_count / local_total_syl if local_total_syl > 0 else 0
-                
-                verse_stats.append({
-                    'track': track,
-                    'artist': artist,
-                    'density': density,
-                    'multi_score': multi_score,
-                    'unique_sigs': len(local_sigs),
-                    'total_syllables': local_total_syl
-                })
+    df = _read_csv(csv_path)
+    lyrics_column = _pick_lyrics_column(df)
+    for column in ("track_name", "artist"):
+        if column not in df.columns:
+            raise DatasetError(f"Dataset {csv_path} is missing required column '{column}'.")
 
-            except Exception as e:
-                print(f"Erreur sur {artist} - {track}: {e}")
+    for i, row in df.iterrows():
+        if max_rows is not None and i >= max_rows:
+            break
+        lyrics = row[lyrics_column]
+        if not isinstance(lyrics, str) or not lyrics.strip():
+            continue
+        # Some exports escape newlines inside the CSV field.
+        yield str(row["track_name"]), str(row["artist"]), lyrics.replace("\\n", "\n")
 
-    return sorted(verse_stats, key=lambda x: x['density'], reverse=True)
+
+def analyze_dataset(
+    csv_path=DEFAULT_DATASET,
+    min_occurrences: int = 3,
+    tail_window: int | None = None,
+    only_terminal: bool = False,
+    max_rows=None,
+    progress=False,
+    engine: str = ENGINE_SIMILARITY,
+    **engine_options,
+) -> list[dict]:
+    """Analyse every verse in a CSV and return metric rows, densest first."""
+    rows = []
+    for track, artist, lyrics in iter_verses(csv_path, max_rows=max_rows):
+        try:
+            verse = process_verse(lyrics, artist=artist)
+            label_verse(
+                verse,
+                engine=engine,
+                min_occurrences=min_occurrences,
+                tail_window=tail_window,
+                only_terminal=only_terminal,
+                **engine_options,
+            )
+            metrics = compute_metrics(verse)
+            rows.append(metrics_to_row(track, artist, metrics))
+            if progress:
+                print(f"  ok  {track[:40]:<40} density={metrics['density']:>5}%  multi={metrics['multi']:>5}%")
+        except Exception as exc:                      # keep going on one bad row
+            print(f"  !!  {track[:40]:<40} skipped: {type(exc).__name__}: {exc}")
+
+    rows.sort(key=lambda r: r["Density"], reverse=True)
+    return rows
