@@ -36,8 +36,12 @@
   --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
   --t-fast: 140ms; --t-base: 260ms; --t-slow: 600ms;
 
-  --font-display: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
-  --font-ui: 'Space Grotesk', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Bodoni Moda is an optical-size face: its contrast sharpens as it grows, so
+     a headline is dramatic and a small heading stays readable. Manrope carries
+     the interface - quieter than Space Grotesk, which had personality the
+     lyrics should be supplying instead. */
+  --font-display: 'Bodoni Moda', 'Didot', 'Iowan Old Style', Georgia, serif;
+  --font-ui: 'Manrope', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
   --shell: 1440px;
@@ -147,7 +151,7 @@ body {
   transition: opacity var(--t-base);
 }
 
-#aurora, #grain {
+#threads, #grain {
   position: fixed;
   inset: 0;
   pointer-events: none;
@@ -159,13 +163,13 @@ body {
 /* No filter. The canvas renders at a fraction of its display size and the
  * browser's own upscaling does the blurring for free; a CSS blur over the
  * viewport cost 17fps for a result that is not distinguishable. */
-#aurora { z-index: -2; }
+#threads { z-index: -2; }
 /* No mix-blend-mode here. Blending a fixed full-viewport layer forced the
  * compositor to re-blend the whole screen on every animated frame, measured at
  * 22fps of the budget. At this opacity a plain overlay looks the same. */
 #grain { z-index: -1; background-repeat: repeat; }
 
-/* A vignette keeps the aurora from washing out text at the edges. */
+/* A vignette keeps the weave from washing out text at the edges. */
 body::after {
   content: '';
   position: fixed;
@@ -447,26 +451,14 @@ body::after {
 
 .track {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: var(--gap-md);
   flex-wrap: wrap;
   margin-bottom: var(--gap-lg);
 }
-.track-art {
-  width: 86px; height: 86px; flex: none;
-  border-radius: var(--radius-md);
-  object-fit: cover;
-  background: var(--surface-2);
-  border: 1px solid var(--hairline);
-}
+/* The song's name now lives inside the tilting card's overlay. */
+.track-card { flex: 1 1 340px; min-width: 260px; max-width: 460px; }
 .track-meta { min-width: 0; flex: 1; }
-.track-title {
-  font-family: var(--font-display);
-  font-size: clamp(1.4rem, 3vw, 2.1rem);
-  line-height: 1.1;
-  letter-spacing: -.02em;
-}
-.track-artist { color: var(--ink-2); font-size: .92rem; }
 .track-badges { display: flex; flex-wrap: wrap; gap: var(--gap-xs); margin-top: var(--gap-sm); }
 .badge {
   font-size: .66rem;
@@ -927,28 +919,182 @@ footer a { color: var(--ink-2); }
 .lyrics.seekable .line:hover { background: rgba(255, 255, 255, .04); }
 
 /* ----------------------------------------------------------- BorderGlow */
+/* Ported from the react-bits component. Everything is driven by two custom
+   properties the pointer handler writes: --edge-proximity and --cursor-angle.
+   Nothing here runs per frame. */
 
-.border-glow { position: relative; isolation: isolate; }
+.border-glow {
+  --edge-proximity: 0;
+  --cursor-angle: 45deg;
+  --edge-sensitivity: 34;
+  --color-sensitivity: calc(var(--edge-sensitivity) + 18);
+  --glow-padding: 34px;
+  --cone-spread: 25;
+  position: relative;
+  isolation: isolate;
+  transform: translate3d(0, 0, .01px);
+}
 
-.border-glow::before {
+.border-glow::before,
+.border-glow::after,
+.border-glow > .edge-light {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  padding: 1px;
-  background: radial-gradient(180px circle at var(--glow-x, 50%) var(--glow-y, 50%),
-              var(--flame), transparent 65%);
-  /* Paint the border only: mask out the interior. */
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-          mask-composite: exclude;
-  opacity: 0;
-  transition: opacity var(--t-base) var(--ease-out);
   pointer-events: none;
-  z-index: 1;
+  transition: opacity .25s ease-out;
+  z-index: -1;
 }
-.border-glow.glowing::before { opacity: .85; }
+
+.border-glow:not(:hover)::before,
+.border-glow:not(:hover)::after,
+.border-glow:not(:hover) > .edge-light {
+  opacity: 0;
+  transition: opacity .7s ease-in-out;
+}
+
+/* The coloured border itself: a mesh of radial gradients, then masked down to
+   the arc the cursor is nearest with a conic gradient. */
+.border-glow::before {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--surface) 0 100%) padding-box,
+    radial-gradient(at 80% 55%, var(--flame) 0, transparent 50%) border-box,
+    radial-gradient(at 69% 34%, var(--pulse) 0, transparent 50%) border-box,
+    radial-gradient(at 8% 6%, var(--flame-deep) 0, transparent 50%) border-box,
+    radial-gradient(at 41% 38%, var(--pulse) 0, transparent 50%) border-box,
+    radial-gradient(at 86% 85%, var(--flame) 0, transparent 50%) border-box,
+    linear-gradient(var(--flame) 0 100%) border-box;
+  opacity: calc((var(--edge-proximity) - var(--color-sensitivity)) / (100 - var(--color-sensitivity)));
+  -webkit-mask:
+    conic-gradient(from var(--cursor-angle) at center,
+      #000 calc(var(--cone-spread) * 1%),
+      transparent calc((var(--cone-spread) + 15) * 1%),
+      transparent calc((100 - var(--cone-spread) - 15) * 1%),
+      #000 calc((100 - var(--cone-spread)) * 1%));
+          mask:
+    conic-gradient(from var(--cursor-angle) at center,
+      #000 calc(var(--cone-spread) * 1%),
+      transparent calc((var(--cone-spread) + 15) * 1%),
+      transparent calc((100 - var(--cone-spread) - 15) * 1%),
+      #000 calc((100 - var(--cone-spread)) * 1%));
+}
+
+/* The outer bloom. Sits outside the box, so it needs its own element rather
+   than a pseudo: the two pseudos are already spoken for. */
+.border-glow > .edge-light {
+  inset: calc(var(--glow-padding) * -1);
+  z-index: 1;
+  -webkit-mask: conic-gradient(from var(--cursor-angle) at center,
+      #000 2.5%, transparent 10%, transparent 90%, #000 97.5%);
+          mask: conic-gradient(from var(--cursor-angle) at center,
+      #000 2.5%, transparent 10%, transparent 90%, #000 97.5%);
+  opacity: calc((var(--edge-proximity) - var(--edge-sensitivity)) / (100 - var(--edge-sensitivity)));
+  mix-blend-mode: plus-lighter;
+}
+
+.border-glow > .edge-light::before {
+  content: '';
+  position: absolute;
+  inset: var(--glow-padding);
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 138, 61, 1),
+    inset 0 0 3px 0 rgba(255, 138, 61, .5),
+    inset 0 0 15px 0 rgba(255, 138, 61, .3),
+    inset 0 0 40px 2px rgba(255, 138, 61, .12),
+    0 0 3px 0 rgba(255, 138, 61, .5),
+    0 0 15px 0 rgba(255, 138, 61, .3),
+    0 0 45px 2px rgba(255, 138, 61, .12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .border-glow::before, .border-glow > .edge-light { display: none; }
+}
+
+/* ------------------------------------------------------------ TiltedCard */
+
+.tilted-card { display: block; width: 100%; }
+
+.tc-figure {
+  position: relative;
+  margin: 0;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  perspective: 800px;
+  display: grid;
+  place-items: center;
+}
+
+.tc-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transform-style: preserve-3d;
+  will-change: transform;
+  /* Behind any artwork, and all there is when a song has none. */
+  background:
+    radial-gradient(at 20% 20%, rgba(255, 94, 58, .55), transparent 60%),
+    radial-gradient(at 85% 75%, rgba(92, 225, 230, .40), transparent 60%),
+    var(--surface-2);
+  box-shadow: var(--shadow-panel);
+}
+
+.tc-img {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  transform: translateZ(0);
+}
+.tc-img[hidden] { display: none; }
+
+.tc-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: var(--gap-md);
+  transform: translateZ(34px);
+  /* Artwork is busy; the title has to stay readable over any of it. */
+  background: linear-gradient(to top, rgba(8, 8, 12, .88) 8%, rgba(8, 8, 12, .25) 55%, transparent);
+}
+
+.tc-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 2.4vw, 2.1rem);
+  line-height: 1.1;
+  letter-spacing: -.01em;
+}
+.tc-artist { font-size: .84rem; color: var(--ink-2); }
+.tc-badges { display: flex; flex-wrap: wrap; gap: var(--gap-xs); margin-top: var(--gap-sm); }
+
+/* The duplicate outside the card: kept in the DOM for anything reading the
+   page's structure, but only one copy should be on screen. */
+.track-badges { display: none; }
+
+.tc-caption {
+  pointer-events: none;
+  position: absolute;
+  left: 0; top: 0;
+  z-index: 3;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--void);
+  font-size: .66rem;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+}
+.tc-caption[hidden] { display: none; }
+
+@media (max-width: 640px) { .tc-caption { display: none; } }
 
 /* --------------------------------------------------------- GlassSurface */
 
@@ -964,25 +1110,6 @@ footer a { color: var(--ink-2); }
 
 .particle-host { position: relative; display: inline-block; }
 .particle-canvas { position: absolute; inset: 0; pointer-events: none; }
-
-/* --------------------------------------------- background switcher ----- */
-
-.bg-switch { display: flex; gap: 2px; align-items: center; }
-
-.bg-btn {
-  padding: 3px 9px;
-  font-size: .64rem;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  background: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  transition: color var(--t-fast), border-color var(--t-fast);
-}
-.bg-btn:hover { color: var(--ink-2); }
-.bg-btn[aria-pressed="true"] { color: var(--flame); border-color: var(--hairline-bright); }
 
 /* ---------------------------------------------------------- ProfileCard */
 

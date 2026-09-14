@@ -132,11 +132,11 @@ class TestStaticFiles(unittest.TestCase):
         html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
         for element_id in ("trackSelect", "engineSelect", "lyrics", "chains", "stats",
                            "tooltip", "pastePanel", "analyseBtn", "linkInput", "linkForm",
-                           "aurora", "grain", "status", "player",
+                           "threads", "grain", "status", "player",
                            # transport
                            "transport", "seek", "playToggle", "playIcon", "clock",
                            # effects
-                           "heroParticles", "bgSwitch", "profileCard"):
+                           "heroParticles", "trackCard", "profileCard"):
             self.assertIn(f'id="{element_id}"', html)
 
     def test_effects_used_by_the_app_are_exported(self):

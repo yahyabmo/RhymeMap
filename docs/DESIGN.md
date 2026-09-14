@@ -13,7 +13,7 @@ achromatic, and every hue on screen is generated from the rhyme groups themselve
 A syllable is coloured because of how it sounds. Colour is data here, never
 decoration, and the interface is built so nothing competes with it.
 
-Around that sits a slow **aurora** — soft spectral light drifting behind the
+Around that sits the **weave** — glowing filaments drifting behind the
 content, reacting to the track when one is playing. It gives the page the feel of
 a darkened room with a system running in it, rather than a document.
 
@@ -26,7 +26,7 @@ cool accent (`#5ce1e6`) for live state, generous black, and type doing the work.
 - **Hue is generated from the data** — the rhyme palette is the brand palette
 - One warm accent for action, one cool accent for "playing"
 - Editorial display serif against a geometric UI sans and a phonetic mono
-- Aurora + film grain: atmosphere, never texture for its own sake
+- Woven threads + film grain: atmosphere, never texture for its own sake
 - Motion that explains — reveals follow reading order, colour arrives with meaning
 - Big hit areas, pill geometry, deep shadows
 
@@ -95,8 +95,8 @@ light enough that dark ink always clears contrast.
 ### Families
 | Role | Stack |
 |---|---|
-| Display | `'Instrument Serif', 'Iowan Old Style', Georgia, serif` |
-| UI / Body | `'Space Grotesk', 'Inter', system-ui, -apple-system, sans-serif` |
+| Display | `'Bodoni Moda', 'Didot', 'Iowan Old Style', Georgia, serif` |
+| UI / Body | `'Manrope', 'Inter', system-ui, -apple-system, sans-serif` |
 | Phonetic | `'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace` |
 
 The display serif is doing deliberate work: the subject is *poetics*, and an
@@ -158,9 +158,9 @@ Rules
    than ~600ms total.
 2. **Colour arrives with meaning.** Syllables fade from neutral to their rhyme
    hue *after* the text lands, so the reader sees words, then the pattern.
-3. **One thing moves at a time.** The aurora is ambient and continuous; anything
+3. **One thing moves at a time.** The weave is ambient and continuous; anything
    else animates only in response to input.
-4. **`prefers-reduced-motion` is honoured completely** — aurora frozen, reveals
+4. **`prefers-reduced-motion` is honoured completely** — the weave frozen, reveals
    become instant, no parallax. The page must remain fully usable and still
    handsome.
 
@@ -197,7 +197,8 @@ Ported to vanilla JS/CSS from the patterns in
 
 | Effect | Where | Notes |
 |---|---|---|
-| Aurora | Page background | Canvas 2D, drifting spectral blobs, audio-reactive |
+| WebThreads | Page background | WebGL2 fragment shader; hue follows the rhyme under the playhead |
+| Aurora | Background fallback | Canvas 2D; used where there is no GPU to run the shader on |
 | Noise | Global overlay | Tiled grain, `mix-blend-mode: overlay`, ~3% opacity |
 | SplitText | Hero headline | Per-character rise + blur clear |
 | ShinyText | Brand mark, badges | Sweeping highlight |
@@ -210,7 +211,7 @@ Ported to vanilla JS/CSS from the patterns in
 | ScrambledText | Loading states | Character scramble while work is in flight |
 
 Every effect is capped: `prefers-reduced-motion` disables all of them, and the
-aurora drops to a static gradient.
+the weave is drawn once and held still.
 
 ---
 
@@ -226,7 +227,7 @@ aurora drops to a static gradient.
 **Don't**
 - Tint the chrome with accent colour; it competes with the data
 - Enumerate rhyme colours in CSS — generate them, there is no upper bound
-- Animate the aurora and a reveal and a hover simultaneously
+- Animate the weave and a reveal and a hover simultaneously
 - Use colour alone to convey state; pair it with a ring, label or position
 - Put anything behind a hover on touch: every hover affordance has a tap path
 

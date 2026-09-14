@@ -12,7 +12,7 @@ const verses = typeof rhymeData !== 'undefined' ? rhymeData.slice() : [];
 
 const el = (id) => document.getElementById(id);
 const ui = {
-  aurora: el('aurora'), grain: el('grain'), waves: el('waves'), progress: el('progress'),
+  threads: el('threads'), grain: el('grain'), waves: el('waves'), progress: el('progress'),
   rotatingWord: el('rotatingWord'), heroLede: el('heroLede'),
   form: el('linkForm'), input: el('linkInput'), analyse: el('analyseBtn'),
   status: el('status'), pasteToggle: el('pasteToggle'), pastePanel: el('pastePanel'),
@@ -21,21 +21,20 @@ const ui = {
   groupCount: el('groupCount'), tooltip: el('tooltip'),
   trackSelect: el('trackSelect'), engineSelect: el('engineSelect'), dimToggle: el('dimToggle'),
   trackTitle: el('trackTitle'), trackArtist: el('trackArtist'),
-  trackArt: el('trackArt'), trackBadges: el('trackBadges'),
+  trackCard: el('trackCard'), trackBadges: el('trackBadges'),
   player: el('player'), playerFrame: el('playerFrame'), audio: el('audio'),
   heroTitle: el('heroTitle'), heroParticles: el('heroParticles'),
   transport: el('transport'), seek: el('seek'), playToggle: el('playToggle'),
   playIcon: el('playIcon'), clock: el('clock'), playerNote: el('playerNote'),
-  bgSwitch: el('bgSwitch'), profileCard: el('profileCard'),
+  profileCard: el('profileCard'),
   profileAvatar: el('profileAvatar'), profileName: el('profileName'),
 };
 
 let current = null;
 let isolated = null;
-let auroraHandle = null;
+let threadsHandle = null;
 let wavesHandle = null;
-let grainientHandle = null;
-let topographyHandle = null;
+let trackCard = null;
 let stopStatusAnimation = null;
 
 /* ------------------------------------------------------------- palette -- */
@@ -90,19 +89,14 @@ function renderStats(verse) {
 }
 
 function renderTrack(verse) {
-  ui.trackTitle.textContent = verse.track || 'Untitled';
-  ui.trackArtist.textContent = verse.artist || '';
+  const title = verse.track || 'Untitled';
+  const artist = verse.artist || '';
+  // Kept in the DOM, visually hidden: the heading is inside the card's overlay,
+  // but a page still needs a real heading for anything that reads structure.
+  ui.trackTitle.textContent = title;
+  ui.trackArtist.textContent = artist;
 
   const source = verse.source || {};
-  if (source.thumbnail) {
-    ui.trackArt.src = source.thumbnail;
-    ui.trackArt.alt = `${verse.track} cover`;
-    ui.trackArt.hidden = false;
-  } else {
-    ui.trackArt.hidden = true;
-    ui.trackArt.removeAttribute('src');
-  }
-
   const badges = [];
   if (verse.engine) badges.push({ text: verse.engine });
 
@@ -128,9 +122,21 @@ function renderTrack(verse) {
   if (SYNC[source.sync]) badges.push(SYNC[source.sync]);
   else if (verse.timed) badges.push({ text: 'timed', live: true });
 
-  ui.trackBadges.innerHTML = badges
+  const badgeHtml = badges
     .map((b) => `<span class="badge${b.live ? ' live' : ''}"${b.hint ? ` title="${b.hint}"` : ''}>${b.text}</span>`)
     .join('');
+  ui.trackBadges.innerHTML = badgeHtml;
+
+  if (!trackCard) trackCard = Effects.tiltedCard(ui.trackCard, { rotateAmplitude: 10 });
+  trackCard.update({
+    imageSrc: source.thumbnail || '',
+    altText: source.thumbnail ? `${title} artwork` : '',
+    captionText: artist ? `${artist} — ${title}` : title,
+    overlayHtml:
+      `<div class="tc-title">${escapeHtml(title)}</div>` +
+      (artist ? `<div class="tc-artist">${escapeHtml(artist)}</div>` : '') +
+      (badgeHtml ? `<div class="tc-badges">${badgeHtml}</div>` : ''),
+  });
 }
 
 function renderLyrics(verse) {
@@ -278,12 +284,10 @@ function paintAmbience(verse) {
   const strongest = (verse.groups || [])[0];
   const hue = strongest ? hueFor(strongest.label) : null;
 
-  const field = auroraHandle || grainientHandle;
-  if (field) {
-    field.setEnergy(0.22 + density * 0.6);
-    if (hue !== null) field.setHue(hue * 0.35);
+  if (threadsHandle) {
+    threadsHandle.setEnergy(0.22 + density * 0.6);
+    if (hue !== null) threadsHandle.setHue(hue);
   }
-  if (topographyHandle && hue !== null) topographyHandle.setHue(hue);
   if (wavesHandle) {
     wavesHandle.setLevel(0.14 + density * 0.5);
     if (hue !== null) wavesHandle.setHue(hue);
@@ -633,11 +637,9 @@ function seek(items, time) {
 }
 
 function reactTo(label) {
-  const background = grainientHandle || auroraHandle;
   if (label) {
     const hue = hueFor(label);
-    if (background) background.setHue(hue * 0.4);
-    if (topographyHandle) topographyHandle.setHue(hue);
+    if (threadsHandle) threadsHandle.setHue(hue);
     if (wavesHandle) { wavesHandle.setHue(hue); wavesHandle.setLevel(0.72); }
   } else if (wavesHandle) {
     wavesHandle.setLevel(0.22);
@@ -680,52 +682,6 @@ function highlightLineAt(time) {
   }
 }
 
-
-/* ---------------------------------------------------------- backgrounds -- */
-
-/* Three backgrounds, one at a time.
- *
- * Not stacked. Measuring this page previously showed that full-viewport
- * compositing is what costs frames - three simultaneous full-screen canvases
- * would undo the work that got it from 17fps to 61. Switching is instant and
- * the choice is remembered, so nothing is lost by only running one. */
-
-const BACKGROUNDS = {
-  aurora: () => { auroraHandle = Effects.aurora(ui.aurora); Effects.noise(ui.grain); },
-  // Grain is drawn into the gradient's own buffer, so the separate grain layer
-  // is not needed and is left switched off.
-  grainient: () => { grainientHandle = Effects.grainient(ui.aurora); },
-  topography: () => { topographyHandle = Effects.topography(ui.aurora); Effects.noise(ui.grain); },
-};
-
-function applyBackground(name) {
-  const chosen = BACKGROUNDS[name] ? name : 'aurora';
-
-  [auroraHandle, grainientHandle, topographyHandle].forEach((handle) => {
-    if (handle && handle.destroy) handle.destroy();
-  });
-  auroraHandle = grainientHandle = topographyHandle = null;
-  ui.grain.style.opacity = chosen === 'grainient' ? '0' : '';
-
-  BACKGROUNDS[chosen]();
-  try { localStorage.setItem('rhymemap-bg', chosen); } catch (_) { /* private mode */ }
-
-  if (ui.bgSwitch) {
-    ui.bgSwitch.querySelectorAll('.bg-btn').forEach((button) => {
-      button.setAttribute('aria-pressed', String(button.dataset.bg === chosen));
-    });
-  }
-
-  // Re-apply the current verse's energy to whichever canvas is now running.
-  if (current) paintAmbience(current);
-}
-
-function setupBackgrounds() {
-  if (!ui.bgSwitch) return;
-  ui.bgSwitch.querySelectorAll('.bg-btn').forEach((button) => {
-    button.addEventListener('click', () => applyBackground(button.dataset.bg));
-  });
-}
 
 /* ---------------------------------------------------------------- server -- */
 
@@ -834,7 +790,14 @@ function init() {
 
 
   wavesHandle = Effects.waves(ui.waves);
-  applyBackground(localStorage.getItem('rhymemap-bg') || 'aurora');
+
+  // One background: the woven threads, on the GPU. Where there is no GPU to run
+  // them on - no WebGL2, or a software renderer that would run the shader on the
+  // CPU - the aurora takes over. It is the cheap 2D field this page used before
+  // and it holds 60fps in exactly the conditions the shader does not.
+  threadsHandle = Effects.webThreads(ui.threads);
+  if (!threadsHandle.supported) threadsHandle = Effects.aurora(ui.threads);
+  Effects.noise(ui.grain);
 
   // The headline assembles out of particles, then hands back to the real <h1>.
   // splitText is the fallback: it is what runs under prefers-reduced-motion,
@@ -945,7 +908,7 @@ function init() {
     togglePlay();
   });
 
-  setupBackgrounds();
+
 
   ['timeupdate', 'seeked', 'loadedmetadata'].forEach((event) => {
     ui.audio.addEventListener(event, () => { if (timed.length) highlightAt(ui.audio.currentTime); });

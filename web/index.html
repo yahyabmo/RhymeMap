@@ -8,11 +8,11 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2308080c'/%3E%3Ctext x='16' y='23' font-size='19' font-family='Georgia,serif' fill='%23ff8a3d' text-anchor='middle'%3ER%3C/text%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..600&family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <canvas id="aurora" aria-hidden="true"></canvas>
+  <canvas id="threads" aria-hidden="true"></canvas>
   <canvas id="waves" aria-hidden="true"></canvas>
   <div id="grain" aria-hidden="true"></div>
   <div id="progress" aria-hidden="true"></div>
@@ -26,11 +26,6 @@
       <nav>
         <a class="nav-link" href="#analysis">Analysis</a>
         <a class="nav-link" href="#how">How it works</a>
-        <div class="bg-switch" id="bgSwitch" role="group" aria-label="Background">
-          <button class="bg-btn" type="button" data-bg="aurora" aria-pressed="true">Aurora</button>
-          <button class="bg-btn" type="button" data-bg="grainient" aria-pressed="false">Grain</button>
-          <button class="bg-btn" type="button" data-bg="topography" aria-pressed="false">Relief</button>
-        </div>
         <button class="btn btn-ghost btn-sm" id="dimToggle" type="button" aria-pressed="true">Dim</button>
       </nav>
     </div>
@@ -74,10 +69,10 @@
 
     <section class="shell" id="analysis" hidden>
       <div class="track" data-reveal>
-        <img class="track-art" id="trackArt" alt="" hidden>
+        <div class="track-card" id="trackCard"></div>
         <div class="track-meta">
-          <h2 class="track-title" id="trackTitle">—</h2>
-          <p class="track-artist" id="trackArtist"></p>
+          <h2 class="sr-only" id="trackTitle">—</h2>
+          <p class="sr-only" id="trackArtist"></p>
           <div class="track-badges" id="trackBadges"></div>
         </div>
         <div class="controls">
@@ -105,7 +100,7 @@
         </article>
 
         <aside class="sidebar">
-          <section class="panel player" id="player" hidden data-reveal>
+          <section class="panel player border-glow" id="player" hidden data-reveal><span class="edge-light"></span>
             <div class="panel-title">Playback</div>
             <div class="player-frame" id="playerFrame" hidden></div>
             <audio id="audio" preload="metadata" hidden></audio>

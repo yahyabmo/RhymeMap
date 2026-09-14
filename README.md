@@ -201,7 +201,8 @@ album art.** Music players go achromatic so cover art can supply the colour;
 RhymeMapper has no cover art, it has phonetics, so the chrome stays near-black
 and every hue on screen is computed from the sound.
 
-Effects (aurora, grain, split-text, count-up, click-spark, magnetic buttons,
+Effects (woven threads on the GPU, particle text, split-flap, border glow, tilted
+card, elastic slider, grain, count-up, click-spark, magnetic buttons,
 spotlight panels, scrambled loading text) are ported to vanilla JS from the
 patterns in [react-bits](https://github.com/DavidHDev/react-bits). All of them
 switch off under `prefers-reduced-motion`, and the page stays fully usable.

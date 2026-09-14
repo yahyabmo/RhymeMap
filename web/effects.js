@@ -676,23 +676,68 @@ const Effects = (() => {
 
   /* ---------- BorderGlow ----------
    *
-   * A light that follows the pointer around a panel's edge. Two CSS custom
-   * properties and a masked gradient, so it costs no JavaScript per frame -
-   * only a pointer listener that writes two numbers.
+   * A light that runs along the edge nearest the cursor.
+   *
+   * Ported from the react-bits component. The whole effect is CSS: the pointer
+   * handler writes two numbers and nothing else runs per frame. Those two are
+   *
+   *   --edge-proximity  0 at the centre, 100 hard against an edge
+   *   --cursor-angle    the bearing from the centre to the cursor
+   *
+   * and the stylesheet turns them into a conic mask, so the glow only lights
+   * the arc the cursor is actually near rather than the whole border.
    */
 
-  function borderGlow(element) {
+  function borderGlow(element, options = {}) {
     if (prefersReducedMotion()) return () => {};
-    const onMove = (event) => {
-      const box = element.getBoundingClientRect();
-      element.style.setProperty('--glow-x', `${event.clientX - box.left}px`);
-      element.style.setProperty('--glow-y', `${event.clientY - box.top}px`);
-    };
+
+    const sensitivity = options.edgeSensitivity ?? 34;
     element.classList.add('border-glow');
+    element.style.setProperty('--edge-sensitivity', String(sensitivity));
+
+    // The bloom needs a real child element, and panels get their innerHTML
+    // replaced on every analysis - which silently deleted it. Re-checked on
+    // entry rather than created once, so the effect repairs itself whatever
+    // rewrites the panel.
+    function ensureEdgeLight() {
+      if (element.querySelector(':scope > .edge-light')) return;
+      const light = document.createElement('span');
+      light.className = 'edge-light';
+      element.prepend(light);
+    }
+    ensureEdgeLight();
+
+    function onMove(event) {
+      ensureEdgeLight();
+      const box = element.getBoundingClientRect();
+      const halfWidth = box.width / 2;
+      const halfHeight = box.height / 2;
+      const dx = event.clientX - box.left - halfWidth;
+      const dy = event.clientY - box.top - halfHeight;
+
+      // How far out towards an edge the cursor is, as a fraction. Taking the
+      // smaller of the two axis ratios is what makes a corner read as 100 and
+      // the middle of a long side read as 100 too - it is distance to the
+      // nearest edge, not to the centre.
+      const kx = dx === 0 ? Infinity : halfWidth / Math.abs(dx);
+      const ky = dy === 0 ? Infinity : halfHeight / Math.abs(dy);
+      const proximity = Math.min(Math.max(1 / Math.min(kx, ky), 0), 1);
+
+      let angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+      if (angle < 0) angle += 360;
+
+      element.style.setProperty('--edge-proximity', (proximity * 100).toFixed(2));
+      element.style.setProperty('--cursor-angle', `${angle.toFixed(2)}deg`);
+    }
+
+    const onLeave = () => element.style.setProperty('--edge-proximity', '0');
+
     element.addEventListener('pointermove', onMove);
-    element.addEventListener('pointerenter', () => element.classList.add('glowing'));
-    element.addEventListener('pointerleave', () => element.classList.remove('glowing'));
-    return () => element.removeEventListener('pointermove', onMove);
+    element.addEventListener('pointerleave', onLeave);
+    return () => {
+      element.removeEventListener('pointermove', onMove);
+      element.removeEventListener('pointerleave', onLeave);
+    };
   }
 
   /* ---------- ParticleText ----------
@@ -982,11 +1027,441 @@ const Effects = (() => {
     };
   }
 
+
+  /* ---------- WebThreads ----------
+   *
+   * Woven glowing filaments, on the GPU.
+   *
+   * Ported from the react-bits component, which draws through `ogl`. There is
+   * no bundler here, so the WebGL2 is raw: one full-screen triangle, one
+   * fragment program, a handful of uniforms. The shader is the component's own.
+   *
+   * The colours are not the component's defaults. They follow the rhyme group
+   * currently under the cursor or under the playhead, which is the same rule
+   * every other colour on this page obeys: hue comes from the phonetics.
+   */
+
+  const THREADS_VERT = `#version 300 es
+in vec2 position;
+void main() { gl_Position = vec4(position, 0.0, 1.0); }`;
+
+  const THREADS_FRAG = `#version 300 es
+precision highp float;
+uniform vec2 iResolution;
+uniform float iTime;
+uniform float uSpeed;
+uniform float uThreadCount;
+uniform float uFrequency;
+uniform float uSpread;
+uniform float uTaper;
+uniform float uPosition;
+uniform float uGlow;
+uniform float uFalloff;
+uniform float uThickness;
+uniform float uBrightness;
+uniform float uOpacity;
+uniform float uGrainIntensity;
+uniform vec3 uColor1;
+uniform vec3 uColor2;
+uniform vec3 uColor3;
+uniform vec2 uMouse;
+uniform float uMouseStrength;
+uniform float uMouseActive;
+out vec4 fragColor;
+
+#define TAU 6.28318530718
+#define MAX_THREADS 10
+
+float glowAt(float x, float str, float dist) {
+  return dist / pow(max(x, 1e-4), str);
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / iResolution.xy;
+  float n = max(uThreadCount, 1.0);
+
+  // The pinch point: where every thread passes through. It drifts towards the
+  // cursor, which is what makes the field feel attached to the page.
+  float pinchX = mix(0.5, uMouse.x, clamp(uMouseStrength, 0.0, 1.0) * uMouseActive);
+
+  float spreadDx = uSpread * abs(uv.x - pinchX);
+  float baseT = iTime * uSpeed;
+  float tauOverN = TAU / n;
+  float mirror = sign(pinchX - uv.x);
+  float invThickness = 1.0 / max(uThickness, 0.01);
+  float xFreq = uv.x * uFrequency;
+  float yOff = uv.y - uPosition;
+  float ciScale = n > 1.0 ? 1.0 / (n - 1.0) : 0.0;
+
+  vec3 col = vec3(0.0);
+  float gsum = 0.0;
+
+  for (int idx = 0; idx < MAX_THREADS; idx++) {
+    float i = float(idx);
+    if (i >= n) break;
+
+    float amplitude = spreadDx * (1.0 + i * uTaper);
+    float phase = (baseT + i * tauOverN) * mirror;
+    float sdf = abs(yOff + sin(xFreq + phase) * amplitude) * invThickness;
+
+    float g = glowAt(sdf, uFalloff, uGlow);
+    col += g * mix(uColor1, uColor2, i * ciScale);
+    gsum += g;
+  }
+
+  float coreAmt = smoothstep(0.5, 2.2, gsum);
+  col = mix(col, uColor3 * gsum, coreAmt * 0.5);
+
+  float bright = uBrightness;
+  vec2 md = uv - uMouse;
+  bright += clamp(uMouseStrength, 0.0, 1.0) * uMouseActive * exp(-dot(md, md) * 6.0) * 0.6;
+  col *= bright;
+
+  float alpha = clamp(gsum, 0.0, 1.0) * uOpacity;
+  vec3 outRgb = col * alpha;
+
+  if (uGrainIntensity > 0.0) {
+    float gv = (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + iTime) * 43758.5453) - 0.5)
+             * uGrainIntensity;
+    outRgb = clamp(outRgb + gv, 0.0, 1.0);
+    alpha = clamp(alpha + gv, 0.0, 1.0);
+  }
+
+  fragColor = vec4(outRgb, alpha);
+}`;
+
+  function compileProgram(gl, vertexSource, fragmentSource) {
+    const build = (type, source) => {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        console.error('shader:', gl.getShaderInfoLog(shader));
+        return null;
+      }
+      return shader;
+    };
+
+    const vertex = build(gl.VERTEX_SHADER, vertexSource);
+    const fragment = build(gl.FRAGMENT_SHADER, fragmentSource);
+    if (!vertex || !fragment) return null;
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vertex);
+    gl.attachShader(program, fragment);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error('program:', gl.getProgramInfoLog(program));
+      return null;
+    }
+    return program;
+  }
+
+  function hslToRgb(h, s, l) {
+    const a = s * Math.min(l, 1 - l);
+    const f = (n) => {
+      const k = (n + h / 30) % 12;
+      return l - a * Math.max(-1, Math.min(Math.min(k - 3, 9 - k), 1));
+    };
+    return [f(0), f(8), f(4)];
+  }
+
+  function webThreads(canvas, options = {}) {
+    const gl = canvas.getContext('webgl2', {
+      alpha: true, premultipliedAlpha: true, antialias: false,
+    });
+    // No WebGL2 (older hardware, a blocked context, a headless capture): the
+    // page has to keep working, so this degrades to nothing rather than failing.
+    if (!gl) return { setHue() {}, setEnergy() {}, destroy() {}, supported: false, reason: 'no-webgl2' };
+
+    // A software renderer will run this shader on the CPU. Measured on
+    // SwiftShader: 60fps with the canvas hidden, 22fps with it drawing - the
+    // shader is the entire cost. That happens on VMs, on some Linux setups and
+    // wherever acceleration is blocked, and those machines are exactly the ones
+    // that cannot spare it. Better a cheaper background than a slow page.
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const renderer = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL) || '') : '';
+    if (/swiftshader|llvmpipe|softwarerasterizer|software|basic render/i.test(renderer)) {
+      return { setHue() {}, setEnergy() {}, destroy() {}, supported: false, reason: 'software' };
+    }
+
+    const program = compileProgram(gl, THREADS_VERT, THREADS_FRAG);
+    if (!program) return { setHue() {}, setEnergy() {}, destroy() {}, supported: false };
+
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    // One oversized triangle covers the viewport with no seam down the middle.
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const location = gl.getAttribLocation(program, 'position');
+    gl.enableVertexAttribArray(location);
+    gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
+
+    const u = {};
+    for (const name of ['iResolution', 'iTime', 'uSpeed', 'uThreadCount', 'uFrequency',
+                        'uSpread', 'uTaper', 'uPosition', 'uGlow', 'uFalloff', 'uThickness',
+                        'uBrightness', 'uOpacity', 'uGrainIntensity', 'uColor1', 'uColor2',
+                        'uColor3', 'uMouse', 'uMouseStrength', 'uMouseActive']) {
+      u[name] = gl.getUniformLocation(program, name);
+    }
+
+    const settings = {
+      speed: 0.18, threadCount: 7, frequency: 4.2, spread: 0.2, taper: 1.0,
+      position: 0.5, glow: 0.022, falloff: 0.62, thickness: 1.1,
+      brightness: 0.62, opacity: 0.95, grainIntensity: 0.05,
+      mouseStrength: 0.32, renderScale: 0.55, ...options,
+    };
+
+    let hue = 22;               // the flame in the palette, until a rhyme sets one
+    let energy = 0.3;
+    const mouse = [0.5, 0.5];
+    const target = [0.5, 0.5];
+    let active = 0, targetActive = 0;
+    const started = performance.now();
+
+    function resize() {
+      // Below display resolution on purpose. The shader is a per-pixel loop
+      // over every thread with a pow() in it, which is the whole cost; the
+      // output is soft glow, so the browser's upscaling is free and invisible.
+      const dpr = Math.min(window.devicePixelRatio || 1, 2) * settings.renderScale;
+      const width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
+      const height = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+
+    const onMove = (event) => {
+      const box = canvas.getBoundingClientRect();
+      target[0] = (event.clientX - box.left) / box.width;
+      target[1] = 1 - (event.clientY - box.top) / box.height;
+      targetActive = 1;
+    };
+    const onLeave = () => { targetActive = 0; };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('pointerleave', onLeave);
+    window.addEventListener('resize', resize);
+    resize();
+
+    gl.useProgram(program);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+    function draw(now) {
+      resize();
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.useProgram(program);
+
+      mouse[0] += 0.05 * (target[0] - mouse[0]);
+      mouse[1] += 0.05 * (target[1] - mouse[1]);
+      active += 0.05 * (targetActive - active);
+
+      // Two hues either side of the rhyme's own, so the weave reads as one
+      // family of colour rather than a rainbow competing with the lyrics.
+      const c1 = hslToRgb((hue + 340) % 360, 0.85, 0.58);
+      const c2 = hslToRgb((hue + 40) % 360, 0.8, 0.62);
+
+      gl.uniform2f(u.iResolution, canvas.width, canvas.height);
+      gl.uniform1f(u.iTime, (now - started) * 0.001);
+      gl.uniform1f(u.uSpeed, settings.speed);
+      gl.uniform1f(u.uThreadCount, settings.threadCount);
+      gl.uniform1f(u.uFrequency, settings.frequency);
+      gl.uniform1f(u.uSpread, settings.spread);
+      gl.uniform1f(u.uTaper, settings.taper);
+      gl.uniform1f(u.uPosition, settings.position);
+      gl.uniform1f(u.uGlow, settings.glow);
+      gl.uniform1f(u.uFalloff, settings.falloff);
+      gl.uniform1f(u.uThickness, settings.thickness);
+      // Energy is the verse's rhyme density: a dense verse burns brighter.
+      gl.uniform1f(u.uBrightness, settings.brightness * (0.75 + energy * 0.7));
+      gl.uniform1f(u.uOpacity, settings.opacity);
+      gl.uniform1f(u.uGrainIntensity, prefersReducedMotion() ? 0 : settings.grainIntensity);
+      gl.uniform3f(u.uColor1, c1[0], c1[1], c1[2]);
+      gl.uniform3f(u.uColor2, c2[0], c2[1], c2[2]);
+      gl.uniform3f(u.uColor3, 1, 1, 1);
+      gl.uniform2f(u.uMouse, mouse[0], mouse[1]);
+      gl.uniform1f(u.uMouseStrength, settings.mouseStrength);
+      gl.uniform1f(u.uMouseActive, active);
+
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    // Reduced motion still gets the weave, held still: the shape is the point,
+    // the drifting is the part people asked to switch off.
+    if (prefersReducedMotion()) {
+      requestAnimationFrame(draw);
+      return {
+        setHue(next) { hue = next; requestAnimationFrame(draw); },
+        setEnergy(next) { energy = Math.min(1, Math.max(0, next)); },
+        destroy() {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerleave', onLeave);
+          window.removeEventListener('resize', resize);
+        },
+        supported: true,
+      };
+    }
+
+    const stop = addTask(draw);
+    return {
+      setHue(next) { hue = next; },
+      setEnergy(next) { energy = Math.min(1, Math.max(0, next)); },
+      destroy() {
+        stop();
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerleave', onLeave);
+        window.removeEventListener('resize', resize);
+        gl.getExtension('WEBGL_lose_context')?.loseContext();
+      },
+      supported: true,
+    };
+  }
+
+
+  /* ---------- TiltedCard ----------
+   *
+   * The track's artwork, tilting under the cursor, with the title laid over it
+   * and a caption that trails the pointer.
+   *
+   * Ported from the react-bits component, whose springs come from `motion`.
+   * There is no bundler here, so the springs are integrated by hand in the
+   * shared ticker - damped, mass-weighted, the same constants the original
+   * uses. Hand-rolling them is the cheaper trade: one dependency avoided for
+   * about twenty lines.
+   */
+
+  function spring(initial, { stiffness = 100, damping = 30, mass = 2 } = {}) {
+    return { value: initial, target: initial, velocity: 0, stiffness, damping, mass };
+  }
+
+  function stepSpring(s, dt) {
+    const force = -s.stiffness * (s.value - s.target) - s.damping * s.velocity;
+    s.velocity += (force / s.mass) * dt;
+    s.value += s.velocity * dt;
+    return s.value;
+  }
+
+  function tiltedCard(host, options = {}) {
+    const rotateAmplitude = options.rotateAmplitude ?? 12;
+    const scaleOnHover = options.scaleOnHover ?? 1.06;
+
+    host.classList.add('tilted-card');
+    host.innerHTML =
+      '<figure class="tc-figure">' +
+        '<div class="tc-inner">' +
+          '<img class="tc-img" alt="" hidden>' +
+          '<div class="tc-overlay"></div>' +
+        '</div>' +
+        '<figcaption class="tc-caption"></figcaption>' +
+      '</figure>';
+
+    const figure = host.querySelector('.tc-figure');
+    const inner = host.querySelector('.tc-inner');
+    const image = host.querySelector('.tc-img');
+    const overlay = host.querySelector('.tc-overlay');
+    const caption = host.querySelector('.tc-caption');
+
+    const rotateX = spring(0);
+    const rotateY = spring(0);
+    const scale = spring(1);
+    const opacity = spring(0, { stiffness: 200, damping: 30, mass: 1 });
+    const captionSpin = spring(0, { stiffness: 350, damping: 30, mass: 1 });
+
+    let lastY = 0;
+    let pointer = { x: 0, y: 0 };
+    let last = performance.now();
+
+    const reduced = prefersReducedMotion();
+
+    function onMove(event) {
+      const box = figure.getBoundingClientRect();
+      const offsetX = event.clientX - box.left - box.width / 2;
+      const offsetY = event.clientY - box.top - box.height / 2;
+
+      rotateX.target = (offsetY / (box.height / 2)) * -rotateAmplitude;
+      rotateY.target = (offsetX / (box.width / 2)) * rotateAmplitude;
+
+      pointer = { x: event.clientX - box.left, y: event.clientY - box.top };
+      // The caption kicks in the direction the pointer is travelling, then
+      // settles. Velocity, not position - that is what makes it feel like paper.
+      captionSpin.target = -(offsetY - lastY) * 0.6;
+      lastY = offsetY;
+    }
+
+    function onEnter() { scale.target = scaleOnHover; opacity.target = 1; }
+    function onLeave() {
+      scale.target = 1; opacity.target = 0;
+      rotateX.target = 0; rotateY.target = 0; captionSpin.target = 0;
+    }
+
+    if (!reduced) {
+      figure.addEventListener('pointermove', onMove);
+      figure.addEventListener('pointerenter', onEnter);
+      figure.addEventListener('pointerleave', onLeave);
+    }
+
+    const stop = reduced ? () => {} : addTask((now) => {
+      // Clamped: a backgrounded tab hands back a huge delta, and an unclamped
+      // spring integrates that into a violent jump on the first frame back.
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+
+      stepSpring(rotateX, dt);
+      stepSpring(rotateY, dt);
+      stepSpring(scale, dt);
+      stepSpring(opacity, dt);
+      stepSpring(captionSpin, dt);
+
+      inner.style.transform =
+        `rotateX(${rotateX.value.toFixed(3)}deg) rotateY(${rotateY.value.toFixed(3)}deg) ` +
+        `scale(${scale.value.toFixed(4)})`;
+      caption.style.opacity = String(Math.max(0, opacity.value));
+      caption.style.transform =
+        `translate(${pointer.x}px, ${pointer.y}px) rotate(${captionSpin.value.toFixed(2)}deg)`;
+    });
+
+    function update(next = {}) {
+      if ('imageSrc' in next) {
+        if (next.imageSrc) {
+          image.src = next.imageSrc;
+          image.hidden = false;
+          image.alt = next.altText || '';
+        } else {
+          image.hidden = true;
+          image.removeAttribute('src');
+        }
+      }
+      if ('overlayHtml' in next) overlay.innerHTML = next.overlayHtml;
+      if ('captionText' in next) {
+        caption.textContent = next.captionText || '';
+        caption.hidden = !next.captionText;
+      }
+    }
+
+    update(options);
+    // A thumbnail that never arrives leaves the gradient behind it, which is
+    // what shows for pasted lyrics anyway.
+    image.addEventListener('error', () => { image.hidden = true; });
+
+    return {
+      update,
+      destroy() {
+        stop();
+        figure.removeEventListener('pointermove', onMove);
+        figure.removeEventListener('pointerenter', onEnter);
+        figure.removeEventListener('pointerleave', onLeave);
+      },
+    };
+  }
+
   return {
     prefersReducedMotion, aurora, noise, splitText, countUp,
     clickSpark, magnet, spotlight, scramble, scrambleLoop, revealOnScroll,
     waves, rotatingText, glare, tilt, scrollProgress, swap,
     splitFlap, elasticSlider, borderGlow, particleText, topography, grainient,
+    webThreads, tiltedCard,
   };
 })();
 
