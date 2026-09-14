@@ -33,6 +33,53 @@ ASSETS = ("index.html", "style.css", "app.js", "effects.js")
 # lettered disc without it, so a missing photo must not fail the build.
 OPTIONAL_ASSETS = ("me.jpg", "me.jpeg", "me.png", "me.webp")
 
+# Links resolved at build time so the published demo has at least one song with
+# real timing behind it. Without one, the player, the timeline and the clock
+# never appear on the published site, because every bundled verse is plain text.
+DEMO_SONGS = PROJECT_ROOT / "dataset" / "demo_songs.txt"
+
+
+def featured_links(path: Path = DEMO_SONGS) -> list[str]:
+    """The YouTube links to resolve at build time, from the list file."""
+    if not path.exists():
+        return []
+    links = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line and not line.startswith("#"):
+            links.append(line)
+    return links
+
+
+def resolve_featured(engine: str, min_occurrences: int) -> list[dict]:
+    """Analyse each featured link. A failure is a warning, never an error.
+
+    The network is involved, so this can fail for reasons that have nothing to
+    do with the repository: YouTube refusing a datacentre address, a lyrics
+    database being down, a video taken offline. None of that should stop a
+    static site from publishing.
+    """
+    from rhymemap.sources import SourceError, resolve
+    from rhymemap.webexport import analyse_song
+
+    songs = []
+    for url in featured_links():
+        print(f"  resolving {url}")
+        try:
+            song = resolve(url)
+            payload = analyse_song(song, engine=engine, min_occurrences=min_occurrences)
+        except SourceError as exc:
+            print(f"    skipped: {str(exc).splitlines()[0]}", file=sys.stderr)
+            continue
+        except Exception as exc:                        # noqa: BLE001 - network, yt-dlp, anything
+            print(f"    skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
+            continue
+
+        sync = payload.get("source", {}).get("sync", "none")
+        print(f"    {song.artist} - {song.title} via {song.provider} ({sync} sync)")
+        songs.append(payload)
+    return songs
+
 
 def stamp_assets(output: Path) -> str:
     """Append a content hash to the script and stylesheet URLs.
@@ -100,6 +147,11 @@ def build(output: Path, engine: str, dataset: str, min_occurrences: int,
     if not verses:
         print("error: nothing to build", file=sys.stderr)
         return 1
+
+    featured = resolve_featured(engine, min_occurrences)
+    if featured:
+        # First in the list, so the demo opens on a song that can actually play.
+        verses = featured + verses
 
     data = output / "data.js"
     with open(data, "w", encoding="utf-8") as handle:
