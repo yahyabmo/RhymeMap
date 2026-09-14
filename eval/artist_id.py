@@ -18,10 +18,10 @@ import argparse
 import json
 from pathlib import Path
 
-from src.analyzer import DEFAULT_DATASET, iter_verses
-from src.labeling import ENGINE_CHOICES, ENGINE_SIMILARITY, label_verse
-from src.metrics import compute_metrics
-from src.phonetics import process_verse
+from rhymemap.analyzer import DEFAULT_DATASET, iter_verses
+from rhymemap.labeling import ENGINE_CHOICES, ENGINE_SIMILARITY, label_verse
+from rhymemap.metrics import compute_metrics
+from rhymemap.phonetics import process_verse
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 

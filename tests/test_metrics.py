@@ -2,8 +2,8 @@
 
 import unittest
 
-from src.metrics import compute_metrics, multisyllabic_runs
-from src.models import Line, Syllable, Verse, Word
+from rhymemap.metrics import compute_metrics, multisyllabic_runs
+from rhymemap.models import Line, Syllable, Verse, Word
 
 
 def labelled(*labels):

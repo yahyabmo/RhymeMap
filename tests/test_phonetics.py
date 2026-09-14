@@ -2,8 +2,8 @@
 
 import unittest
 
-from src.models import Line, Verse
-from src.phonetics import (
+from rhymemap.models import Line, Verse
+from rhymemap.phonetics import (
     clean_word,
     extract_nuclei,
     extract_syllables,

@@ -7,12 +7,11 @@ here against a stand-in for yt-dlp built from YouTube's real response shapes.
 """
 
 import json
-import sys
 import types
 import unittest
 from unittest.mock import patch
 
-from src.sources import (
+from rhymemap.sources import (
     Song,
     SourceError,
     explain_failure,
@@ -42,26 +41,39 @@ INFO = {
 }
 
 
-def fake_yt_dlp(info=None, payload=None):
+def fake_yt_dlp(info=None, payload=None, raises=None, seen=None):
+    """A stand-in for yt_dlp implementing the surface YouTubeReader uses.
+
+    `raises` makes extraction fail the way yt-dlp does, so client rotation and
+    the oEmbed fallback can be exercised. `seen` collects the options each
+    attempt was constructed with.
+    """
     body = json.dumps(payload if payload is not None else CAPTIONS).encode()
 
     class FakeYDL:
         def __init__(self, options):
             self.options = options
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *args):
-            return False
+            self.closed = False
+            if seen is not None:
+                seen.append(options)
 
         def extract_info(self, url, download=False):
+            if raises is not None:
+                raise raises
             return info if info is not None else INFO
 
         def urlopen(self, url):
             return types.SimpleNamespace(read=lambda: body)
 
+        def close(self):
+            self.closed = True
+
     return types.SimpleNamespace(YoutubeDL=FakeYDL)
+
+
+def no_lyrics_online(url):
+    """An LRCLIB fetcher that finds nothing, so tests never touch the network."""
+    return ""
 
 
 class TestParseYoutubeId(unittest.TestCase):
@@ -147,9 +159,9 @@ class TestFromText(unittest.TestCase):
 
 class TestFetchYoutube(unittest.TestCase):
     def fetch(self, url="https://www.youtube.com/watch?v=dQw4w9WgXcQ", **kwargs):
-        from src.sources import fetch_youtube
-        with patch.dict(sys.modules, {"yt_dlp": fake_yt_dlp(**kwargs)}):
-            return fetch_youtube(url)
+        from rhymemap.sources import resolve
+        with patch("rhymemap.sources.youtube._import_yt_dlp", return_value=fake_yt_dlp(**kwargs)):
+            return resolve(url, fetcher=no_lyrics_online)
 
     def test_builds_a_song(self):
         song = self.fetch()
@@ -175,18 +187,22 @@ class TestFetchYoutube(unittest.TestCase):
             self.fetch("https://vimeo.com/12345")
         self.assertIn("YouTube", str(caught.exception))
 
-    def test_missing_captions_gives_an_actionable_error(self):
+    def test_exhausting_every_source_lists_what_was_tried(self):
         info = dict(INFO, subtitles={}, automatic_captions={})
         with self.assertRaises(SourceError) as caught:
             self.fetch(info=info)
-        self.assertIn("no captions", str(caught.exception))
+        message = str(caught.exception)
+        self.assertIn("Tried:", message)
+        self.assertIn("manual captions", message)
+        self.assertIn("lrclib", message)
 
-    def test_noise_only_captions_are_reported(self):
+    def test_noise_only_captions_fall_through_rather_than_succeeding(self):
+        """[Music] is not lyrics; the chain must carry on to the next source."""
         payload = {"events": [{"tStartMs": 0, "dDurationMs": 500,
                                "segs": [{"utf8": "[Music]", "tOffsetMs": 0}]}]}
         with self.assertRaises(SourceError) as caught:
             self.fetch(payload=payload)
-        self.assertIn("no usable lyrics", str(caught.exception))
+        self.assertIn("Tried:", str(caught.exception))
 
 
 class TestExplainFailure(unittest.TestCase):
@@ -230,8 +246,16 @@ class TestLoad(unittest.TestCase):
         self.assertEqual(load("cat in the hat\nbat on the mat").source, "text")
 
     def test_routes_a_link_to_youtube(self):
-        with patch.dict(sys.modules, {"yt_dlp": fake_yt_dlp()}):
+        # lrclib.fetch is substituted as well as yt-dlp: `load` takes no fetcher,
+        # and this fixture has no manual captions, so the chain reaches the
+        # lyrics lookup. Without this the test really called lrclib.net.
+        with patch("rhymemap.sources.youtube._import_yt_dlp", return_value=fake_yt_dlp()), \
+             patch("rhymemap.sources.lrclib.fetch", no_lyrics_online):
             self.assertEqual(load("https://youtu.be/dQw4w9WgXcQ").source, "youtube")
+
+    def test_age_restriction_hint_mentions_cookies(self):
+        message = explain_failure("ERROR: [youtube] X: Sign in to confirm you are not a bot")
+        self.assertIn("RHYMEMAP_COOKIES_FROM_BROWSER", message)
 
 
 if __name__ == "__main__":

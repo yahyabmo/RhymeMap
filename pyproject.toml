@@ -22,10 +22,19 @@ dependencies = [
 ]
 
 [project.scripts]
-rhymemap = "src.main:main"
+rhymemap = "rhymemap.main:main"
 
-[tool.setuptools]
-packages = ["src", "analysis", "scripts"]
+# Only the library ships. `analysis` and `scripts` are repository tooling, run
+# from a clone as `python -m scripts.serve_web`; installing them would put two
+# more generic top-level names into site-packages, which is the same collision
+# the src/ -> rhymemap/ rename existed to remove.
+#
+# The `find` directive rather than an explicit list: an explicit `packages = `
+# does not recurse, so it silently shipped a wheel with rhymemap/sources/ -- the
+# entire song-loading layer -- missing.
+[tool.setuptools.packages.find]
+include = ["rhymemap*"]
+namespaces = false
 
 [tool.ruff]
 line-length = 120
@@ -42,4 +51,4 @@ ignore = [
 "tests/*" = ["E741"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["src", "analysis", "scripts"]
+known-first-party = ["rhymemap", "analysis", "scripts"]

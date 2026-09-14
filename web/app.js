@@ -101,19 +101,41 @@ function renderTrack(verse) {
 
   const badges = [];
   if (verse.engine) badges.push({ text: verse.engine });
-  if (source.captions) badges.push({ text: `${source.captions} captions` });
+
+  // Where the words came from. A reader is entitled to know whether they are
+  // looking at a human transcription or a machine's guess at someone rapping,
+  // because it changes how much the rhyme analysis can be trusted.
+  const PROVENANCE = {
+    'captions': source.captions === 'automatic'
+      ? { text: 'auto captions', hint: 'machine transcription - may mishear' }
+      : { text: 'captions', hint: 'caption track published with the video' },
+    'lrclib-synced': { text: 'LRCLIB synced', hint: 'community lyrics, timed per line' },
+    'lrclib-plain': { text: 'LRCLIB', hint: 'community lyrics, no timing' },
+    'pasted': { text: 'pasted', hint: 'your own text' },
+  };
+  const provenance = PROVENANCE[source.provider];
+  if (provenance) badges.push(provenance);
   if (source.language) badges.push({ text: source.language });
-  if (verse.timed) badges.push({ text: 'timed', live: true });
+
+  const SYNC = {
+    word: { text: 'word sync', live: true, hint: 'a time for every word' },
+    line: { text: 'line sync', live: true, hint: 'a time for every line' },
+  };
+  if (SYNC[source.sync]) badges.push(SYNC[source.sync]);
+  else if (verse.timed) badges.push({ text: 'timed', live: true });
+
   ui.trackBadges.innerHTML = badges
-    .map((b) => `<span class="badge${b.live ? ' live' : ''}">${b.text}</span>`).join('');
+    .map((b) => `<span class="badge${b.live ? ' live' : ''}"${b.hint ? ` title="${b.hint}"` : ''}>${b.text}</span>`)
+    .join('');
 }
 
 function renderLyrics(verse) {
   const fragment = document.createDocumentFragment();
 
-  verse.lines.forEach((line) => {
+  verse.lines.forEach((line, lineIndex) => {
     const lineEl = document.createElement('div');
     lineEl.className = 'line';
+    lineEl.dataset.index = lineIndex;
 
     line.forEach((word) => {
       const wordEl = document.createElement('span');
@@ -138,6 +160,10 @@ function renderLyrics(verse) {
         wordEl.appendChild(node);
       });
       lineEl.appendChild(wordEl);
+      // A real space, not just the margin below. Without it the line is one
+      // unbroken string in the DOM: copying lyrics off the page produced
+      // "butimonlygoing...", and a screen reader read it as a single token.
+      lineEl.appendChild(document.createTextNode(' '));
     });
     fragment.appendChild(lineEl);
   });
@@ -318,15 +344,19 @@ function showTooltip(node, event) {
 
 let timed = [];
 let playing = null;
+let playingLine = null;
+let timedLines = [];
 let ytPlayer = null;
 let ytTicker = 0;
 
 function clearPlaying() {
   if (playing) { playing.node.classList.remove('playing'); playing = null; }
+  if (playingLine) { playingLine.node.classList.remove('playing-line'); playingLine = null; }
 }
 
 function setupPlayback(verse) {
   timed = [];
+  timedLines = [];
   clearPlaying();
   clearInterval(ytTicker);
   ytPlayer = null;
@@ -335,14 +365,26 @@ function setupPlayback(verse) {
   ui.audio.hidden = true;
   ui.player.hidden = true;
 
-  if (!verse.timed) return;
+  const source = verse.source || {};
 
+  // Word-level: a time per syllable, from a caption track.
   timed = Array.from(ui.lyrics.querySelectorAll('.syllable[data-start]'))
     .map((node) => ({ node, start: +node.dataset.start, end: +node.dataset.end }))
     .sort((a, b) => a.start - b.start);
-  if (!timed.length) return;
 
-  const source = verse.source || {};
+  // Line-level: a time per line, from a synced lyric. Coarser, and deliberately
+  // not subdivided into words - splitting a line by word count would invent
+  // timings that look exactly like measured ones.
+  if (!timed.length && Array.isArray(source.line_times) && source.line_times.length) {
+    const lineNodes = ui.lyrics.querySelectorAll('.line');
+    timedLines = source.line_times
+      .map((pair, index) => ({ node: lineNodes[index], start: +pair[0], end: +pair[1] }))
+      .filter((item) => item.node)
+      .sort((a, b) => a.start - b.start);
+  }
+
+  if (!timed.length && !timedLines.length) return;
+
   if (source.kind === 'youtube' && source.video_id) {
     // Embed YouTube's own player: playback stays on the platform licensed to
     // serve it, and nothing copyrighted is downloaded or hosted here.
@@ -391,30 +433,62 @@ function mountYouTube(videoId) {
   window.onYouTubeIframeAPIReady = () => { if (previous) previous(); start(); };
 }
 
-function highlightAt(time) {
+function seek(items, time) {
   // Binary search: this runs ~8x a second over up to 1500 syllables.
-  let low = 0, high = timed.length - 1, found = null;
+  let low = 0, high = items.length - 1;
   while (low <= high) {
     const mid = (low + high) >> 1;
-    const item = timed[mid];
+    const item = items[mid];
     if (time < item.start) high = mid - 1;
     else if (time > item.end) low = mid + 1;
-    else { found = item; break; }
+    else return item;
   }
+  return null;
+}
+
+function reactTo(label) {
+  if (label) {
+    const hue = hueFor(label);
+    if (auroraHandle) auroraHandle.setHue(hue * 0.4);
+    if (wavesHandle) { wavesHandle.setHue(hue); wavesHandle.setLevel(0.72); }
+  } else if (wavesHandle) {
+    wavesHandle.setLevel(0.22);
+  }
+}
+
+function highlightAt(time) {
+  if (timed.length) { highlightSyllableAt(time); return; }
+  highlightLineAt(time);
+}
+
+function highlightSyllableAt(time) {
+  const found = seek(timed, time);
   if (found === playing) return;
   clearPlaying();
   if (found) {
     found.node.classList.add('playing');
     found.node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     playing = found;
-    const label = found.node.dataset.label;
-    if (label) {
-      const hue = hueFor(label);
-      if (auroraHandle) auroraHandle.setHue(hue * 0.4);
-      if (wavesHandle) { wavesHandle.setHue(hue); wavesHandle.setLevel(0.72); }
-    } else if (wavesHandle) {
-      wavesHandle.setLevel(0.22);
-    }
+    reactTo(found.node.dataset.label);
+  }
+}
+
+function highlightLineAt(time) {
+  const found = seek(timedLines, time);
+  if (found === playingLine) return;
+  clearPlaying();
+  if (found) {
+    found.node.classList.add('playing-line');
+    found.node.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    playingLine = found;
+    // The line's own colour: whichever rhyme group it carries most of.
+    const counts = new Map();
+    found.node.querySelectorAll('.syllable[data-label]').forEach((node) => {
+      counts.set(node.dataset.label, (counts.get(node.dataset.label) || 0) + 1);
+    });
+    let best = '', bestCount = 0;
+    counts.forEach((count, label) => { if (count > bestCount) { best = label; bestCount = count; } });
+    reactTo(best);
   }
 }
 

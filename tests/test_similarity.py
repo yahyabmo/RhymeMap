@@ -2,8 +2,8 @@
 
 import unittest
 
-from src.models import Line, Syllable, Verse, Word
-from src.similarity import (
+from rhymemap.models import Line, Syllable, Verse, Word
+from rhymemap.similarity import (
     DEFAULT_WEIGHTS,
     assign_similarity_labels,
     cluster_syllables,

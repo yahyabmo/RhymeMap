@@ -30,9 +30,9 @@ ASSETS = ("index.html", "style.css", "app.js", "effects.js")
 
 def build(output: Path, engine: str, dataset: str, min_occurrences: int,
           include_demo: bool = True) -> int:
-    from export_for_web import analyse_text, verse_to_dict  # noqa: F401
-    from src.analyzer import DatasetError, iter_verses
-    from src.cache import flush_all
+    from rhymemap.analyzer import DatasetError, iter_verses
+    from rhymemap.cache import flush_all
+    from rhymemap.webexport import analyse_text, verse_to_dict  # noqa: F401
 
     output.mkdir(parents=True, exist_ok=True)
     for name in ASSETS:

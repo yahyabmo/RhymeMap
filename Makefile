@@ -1,6 +1,6 @@
 # RhymeMapper
 
-.PHONY: help install test stats plots demo web web-export serve karaoke site eval gold tune clean all
+.PHONY: help install test test-offline stats plots demo web web-export serve karaoke site eval gold tune clean all
 
 PYTHON = python3
 DATA_DIR = data
@@ -10,6 +10,7 @@ help:
 	@echo "RhymeMapper:"
 	@echo "  make install   Install dependencies and NLTK corpora"
 	@echo "  make test      Run the unit tests"
+	@echo "  make test-offline  Run them with the network blocked"
 	@echo "  make demo      Colour-code the demo verse in the terminal"
 	@echo "  make stats     Analyse a corpus -> $(DATA_DIR)/stats.csv"
 	@echo "  make plots     Generate all figures into $(DATA_DIR)/"
@@ -34,6 +35,11 @@ install:
 test:
 	./run_tests.sh
 
+# The same suite with every outbound connection blocked, proving the song
+# loader's network seams are really substituted rather than reaching out.
+test-offline:
+	$(PYTHON) -m scripts.check_no_network
+
 stats:
 	$(PYTHON) -m scripts.generate_stats --input $(DATASET)
 
@@ -41,10 +47,10 @@ plots:
 	$(PYTHON) -m analysis.run_all_plots
 
 demo:
-	$(PYTHON) -m src.main --legend
+	$(PYTHON) -m rhymemap.main --legend
 
 web-export:
-	$(PYTHON) -m export_for_web --input $(DATASET) --demo
+	$(PYTHON) -m rhymemap.webexport --input $(DATASET) --demo
 
 web: web-export
 	@echo "Opening web/index.html"
@@ -61,7 +67,7 @@ serve: web-export
 #   make karaoke AUDIO=track.mp3 TIMINGS=timings.json
 karaoke:
 	@test -n "$(TIMINGS)" || (echo "usage: make karaoke AUDIO=track.mp3 TIMINGS=timings.json" && exit 1)
-	$(PYTHON) -m export_for_web --input $(DATASET) --demo --timings $(TIMINGS) --audio $(AUDIO)
+	$(PYTHON) -m rhymemap.webexport --input $(DATASET) --demo --timings $(TIMINGS) --audio $(AUDIO)
 	$(PYTHON) -m scripts.serve_web
 
 # The read-only demo that GitHub Pages serves. Songs are analysed now and baked

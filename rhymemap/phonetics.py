@@ -7,7 +7,7 @@ Pipeline for one word:
 Phoneme lookup prefers CMUdict (a plain dictionary hit) and only falls back to
 ``g2p_en``'s neural grapheme-to-phoneme model for out-of-vocabulary words, which
 is where rap lyrics spend a lot of their vocabulary ("finna", "skrrt", ad-libs).
-Both tiers are memoised on disk; see ``src/cache.py``.
+Both tiers are memoised on disk; see ``rhymemap/cache.py``.
 """
 
 from __future__ import annotations

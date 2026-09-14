@@ -72,7 +72,7 @@ audit found.
   any two adjacent *labelled* syllables as a multisyllabic rhyme.
 - **One definition per metric.** `generate_stats.py` and `analyzer.py` each
   computed a different formula under the name "Multi" and fed the same column.
-  `src/metrics.py` is now the single source; `diversity` is the separated name
+  `rhymemap/metrics.py` is now the single source; `diversity` is the separated name
   for the other formula.
 
 ### Things that did not run
@@ -109,15 +109,15 @@ audit found.
 ## v3.0 (2026-09-13) – Similarity engine, chains, evaluation, viewer, audio
 
 ### The engine is now a similarity metric, not a string comparison
-- `src/phonology.py` places every ARPAbet phoneme in an articulatory feature
+- `rhymemap/phonology.py` places every ARPAbet phoneme in an articulatory feature
   space: vowels by height, backness, rounding, tenseness, offglide and
   r-colouring; consonants by place, manner and voicing. Codas are compared by a
   Levenshtein alignment whose substitution cost is the feature distance between
   two consonants.
-- `src/similarity.py` scores a syllable pair in [0, 1] and clusters on it.
+- `rhymemap/similarity.py` scores a syllable pair in [0, 1] and clusters on it.
   An identical onset scales the score down: identical onset plus identical rime
   is repetition, not rhyme, and a rime-only score rates "cat"/"cat" a perfect 1.
-- `src/chains.py` finds repeated multisyllabic spans, so
+- `rhymemap/chains.py` finds repeated multisyllabic spans, so
   "levitatin' / devastatin' / ricochetin'" surfaces as one five-syllable chain
   instead of fifteen unrelated syllables.
 
@@ -148,4 +148,61 @@ audit found.
   playback. Forced alignment stays optional and uninstalled.
 
 ### Engineering
-- 227 tests, up from 15. ruff clean. CI runs tests, lint and the full pipeline.
+- 329 tests, up from 15. ruff clean. CI runs tests, lint and the full pipeline.
+
+---
+
+## v4.0 (2026-09-14) – Any song, a real package, and CI that gates the deploy
+
+### Any song, not just captioned ones
+- "Analyse any song from a link" only ever worked when the video happened to
+  publish captions. Most music videos do not, so the feature failed at random
+  from the outside: same code, same kind of link, "no captions".
+- Lyrics now resolve through four sources in descending order of trust:
+  manual captions → LRCLIB synced → automatic captions → LRCLIB plain.
+- LRCLIB sits **above** automatic captions on purpose. ASR of singing mishears
+  rhyme endings specifically, which is the one thing this project measures, so
+  human lyrics with coarser timing beat a machine's guess with finer timing.
+- `rhymemap/sources/titles.py` turns "Eminem - Rap God (Explicit) [Official
+  Video] (4K)" into artist and track. A malformed query does not error, it just
+  matches nothing — so a bug here is indistinguishable from a song that is
+  genuinely absent everywhere.
+- Extraction is retried across YouTube's player clients, which are blocked
+  independently; when it is refused outright, oEmbed still yields the title and
+  the lyrics lookup proceeds. Cookies handle "confirm you're not a bot", and are
+  never read unless asked for.
+
+### Honest playback
+- Line-timed lyrics light the whole line. Dividing a line's span across its
+  words would look plausible, render identically to measured data, and be
+  fabricated. `Song.sync` is `"word"`, `"line"` or `"none"`, and the page says
+  which it has and where the words came from.
+
+### A real package
+- `src/` → `rhymemap/`. A top-level `src` in site-packages collides with every
+  other project that ships one.
+- Only the library is distributed; `analysis` and `scripts` are repository
+  tooling and were polluting site-packages with two more generic names.
+- The wheel had been shipping **without `rhymemap/sources/`** — an explicit
+  `packages = [...]` list does not recurse, and the repository being on
+  `sys.path` hid it during development.
+
+### CI
+- Pages deployed without waiting for the tests: both workflows fired on the same
+  push and ran side by side, so a commit whose tests failed still published.
+- The install was written out three times and had already drifted once.
+  One composite action now.
+- Added: a job that builds and installs the wheel and imports it from outside
+  the source tree, concurrency groups, job timeouts, read-only permissions, and
+  a check that **no test touches the network** — the song loader is
+  network-bound by nature, and such a test passes locally for whoever wrote it.
+
+### Engineering
+- 449 tests, up from 329. ruff clean. CI green on 3.10–3.12.
+- Lines had no spaces in the DOM: words were separated by CSS margin alone, so
+  copying lyrics off the page gave "butimonlygoingtogetthisonechance".
+
+### Not verified
+- No call to youtube.com or lrclib.net has ever run. The environment this was
+  built in denies both hosts by policy, so every network path is exercised
+  against recorded payloads through substituted seams.

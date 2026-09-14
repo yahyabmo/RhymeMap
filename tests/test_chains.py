@@ -2,8 +2,8 @@
 
 import unittest
 
-from src.chains import RhymeChain, _split_by_locality, assign_chain_labels, chain_metrics, detect_chains
-from src.models import Line, Syllable, Verse, Word
+from rhymemap.chains import RhymeChain, _split_by_locality, assign_chain_labels, chain_metrics, detect_chains
+from rhymemap.models import Line, Syllable, Verse, Word
 
 
 def S(nucleus, coda=(), onset=(), text="x"):

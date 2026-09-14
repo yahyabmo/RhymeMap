@@ -2,9 +2,9 @@
 
 import unittest
 
-from src.chains import RhymeChain
-from src.models import Line, Syllable, Verse, Word
-from src.naming import (
+from rhymemap.chains import RhymeChain
+from rhymemap.models import Line, Syllable, Verse, Word
+from rhymemap.naming import (
     FUNCTION_WORDS,
     GroupName,
     canonical_rime,

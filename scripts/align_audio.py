@@ -7,7 +7,7 @@ torch, aeneas needs espeak and ffmpeg. Neither is a dependency of this project -
 this script uses whichever is installed and explains the options when neither is.
 Nothing else in the codebase imports them, so `make install` stays small.
 
-The output is the JSON word-timing format `src.timing` reads. You can also write
+The output is the JSON word-timing format `rhymemap.timing` reads. You can also write
 that file by hand, or export Audacity labels, if you would rather not install an
 aligner at all: the viewer only needs start and end times per word.
 """
@@ -126,7 +126,7 @@ def main(argv=None) -> int:
 
     args.output.write_text(json.dumps(timings, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {args.output} ({len(timings)} words, {timings[-1]['end']:.1f}s)")
-    print(f"Use it with:  python -m export_for_web --timings {args.output} --audio {args.audio.name}")
+    print(f"Use it with:  python -m rhymemap.webexport --timings {args.output} --audio {args.audio.name}")
     return 0
 
 

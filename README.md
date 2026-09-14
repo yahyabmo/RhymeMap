@@ -26,7 +26,7 @@ make eval           # gold set, ablation table, artist-ID experiment
 Every entry point is a real CLI:
 
 ```bash
-python -m src.main --file my_lyrics.txt --artist "Nas" --legend
+python -m rhymemap.main --file my_lyrics.txt --artist "Nas" --legend
 python -m scripts.generate_stats --input dataset/my_corpus.csv --output data/mine.csv
 python -m analysis.run_all_plots --show
 ```
@@ -39,9 +39,10 @@ A larger corpus to try:
 ## How it works
 
 ```
-lyrics -> clean_word -> syllabify (CMUdict) -> Syllable(onset, nucleus, coda)
-       -> signature -> group by frequency -> labels A, B, ... Z, AA, AB, ...
-       -> coloured output / metrics / figures
+link or lyrics -> resolve (captions / LRCLIB) -> clean_word
+               -> syllabify (CMUdict) -> Syllable(onset, nucleus, coda)
+               -> articulatory feature distance -> cluster -> name from the rime
+               -> coloured output / metrics / figures / synced playback
 ```
 
 Phoneme and syllable lookups are cached in `.cache/`, so a repeated run of
@@ -62,16 +63,35 @@ before falling back to the neural grapheme-to-phoneme model.
 
 ## Analyse any song
 
-Paste a YouTube link and RhymeMapper reads the captions:
+Paste a YouTube link:
 
 ```bash
 make serve                                  # then paste a link in the browser
 python -m scripts.analyse_song "https://www.youtube.com/watch?v=..."
 ```
 
-Captions are what make this work without a machine-learning pipeline. One fetch
-yields the lyrics **and** word-level timings, so the rhyme analysis and the
-karaoke playback come from the same source with nothing to align afterwards.
+**Captions alone are not enough.** Captioning a music video is optional and most
+labels skip it, so a captions-only tool fails on a large fraction of music — and
+fails invisibly, since the same code and the same kind of link either work or
+don't depending on something the uploader decided. Lyrics are resolved through
+four sources in descending order of trust:
+
+| | source | gives | written by |
+|---|---|---|---|
+| 1 | manual captions | lyrics + a time per **word** | a person |
+| 2 | [LRCLIB](https://lrclib.net) synced | lyrics + a time per **line** | a person |
+| 3 | automatic captions | lyrics + a time per **word** | a machine |
+| 4 | LRCLIB plain | lyrics | a person |
+
+LRCLIB sits above automatic captions deliberately. Machine transcription of
+singing mishears rhyme endings specifically, and rhyme endings are the one thing
+this project measures — so human lyrics with coarser timing beat a machine's
+guess with finer timing. LRCLIB is free, needs no key, and is read with `urllib`;
+it adds no dependency.
+
+The page says which source it used and how finely it can sync, because that
+changes how much the analysis can be trusted. If every source comes up empty the
+error lists what each one answered, so a block can be told from an absence.
 
 Three things captions get wrong, and what the parser does about them:
 
@@ -89,6 +109,21 @@ Three things captions get wrong, and what the parser does about them:
 Audio is never downloaded. The viewer embeds YouTube's own player and drives the
 highlight from its clock, which keeps playback on the platform licensed to serve
 it and costs no bandwidth or disk.
+
+### If YouTube asks you to prove you are not a bot
+
+It does that to addresses it does not recognise — always to datacentres,
+sometimes to home connections. The fix is to let it see a signed-in session:
+
+```bash
+RHYMEMAP_COOKIES_FROM_BROWSER=chrome make serve   # or firefox, edge, brave
+RHYMEMAP_COOKIES=/path/to/cookies.txt make serve  # or an exported cookie file
+```
+
+Nothing is read from your browser unless you set one of these. Even when
+extraction is refused outright, the song's title is recovered from YouTube's
+public oEmbed endpoint and the lyrics lookup still runs — so a block usually
+costs you the word-level timing, not the analysis.
 
 No link? Paste lyrics directly, or point the tool at a local file with
 `--file lyrics.txt`.
@@ -159,7 +194,7 @@ make karaoke AUDIO=track.mp3 TIMINGS=timings.json
 Forced alignment is deliberately **not** a dependency. Every aligner is heavy —
 WhisperX pulls in torch, aeneas needs espeak and ffmpeg — so `scripts/align_audio.py`
 uses whichever is installed and explains the options when neither is. Nothing in
-`src/` imports them. WebVTT, SRT and Audacity label tracks are read directly, so
+`rhymemap/` imports them. WebVTT, SRT and Audacity label tracks are read directly, so
 you can skip aligners entirely and label the words by hand.
 
 Without timings the player is hidden and everything else behaves identically.
@@ -224,7 +259,7 @@ Python 3.10+, plus the packages in `requirements.txt`.
 ## Layout
 
 ```
-src/        core: models, phonetics, engine, metrics, visual, main
+rhymemap/        core: models, phonetics, engine, metrics, visual, main
 scripts/    CLI entry points (stats generation, NLTK bootstrap)
 analysis/   figure generation
 tests/      unit tests

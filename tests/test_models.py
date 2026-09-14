@@ -2,7 +2,7 @@
 
 import unittest
 
-from src.models import Line, Nucleus, Syllable, Verse, Word
+from rhymemap.models import Line, Nucleus, Syllable, Verse, Word
 
 
 class TestSyllable(unittest.TestCase):

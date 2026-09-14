@@ -1,7 +1,7 @@
 """Demo entry point.
 
-    python -m src.main                 # coloured verse + dataset table
-    python -m src.main --file X.txt    # analyse your own lyrics
+    python -m rhymemap.main                 # coloured verse + dataset table
+    python -m rhymemap.main --file X.txt    # analyse your own lyrics
 """
 
 from __future__ import annotations

@@ -3,7 +3,7 @@
 import json
 import unittest
 
-from src.captions import (
+from rhymemap.captions import (
     CaptionCue,
     cues_to_verse,
     dedupe_rolling,
@@ -13,7 +13,7 @@ from src.captions import (
     split_lines_by_pauses,
     strip_brackets,
 )
-from src.timing import WordTiming
+from rhymemap.timing import WordTiming
 
 
 def event(start_ms, duration_ms, *words, step=300):

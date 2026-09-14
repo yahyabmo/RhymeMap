@@ -4,7 +4,7 @@ Before this module there were two different formulas both exported as "Multi":
 
   * ``scripts/generate_stats.py`` computed distinct signatures / total syllables
     (a *diversity* measure);
-  * ``src/analyzer.py`` counted adjacent labelled syllables *without checking
+  * ``rhymemap/analyzer.py`` counted adjacent labelled syllables *without checking
     that the labels matched*, so "cat ... dog" scored as a multisyllabic rhyme
     purely because both syllables happened to be labelled.
 

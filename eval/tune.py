@@ -12,7 +12,7 @@ import argparse
 import json
 from pathlib import Path
 
-from src.similarity import DEFAULT_WEIGHTS
+from rhymemap.similarity import DEFAULT_WEIGHTS
 
 from .ablation import GOLD_PATH, evaluate, load_gold
 
