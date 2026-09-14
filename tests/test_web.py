@@ -6,6 +6,7 @@ otherwise only show up as a blank page.
 """
 
 import json
+import re
 import threading
 import unittest
 import urllib.error
@@ -131,8 +132,30 @@ class TestStaticFiles(unittest.TestCase):
         html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
         for element_id in ("trackSelect", "engineSelect", "lyrics", "chains", "stats",
                            "tooltip", "pastePanel", "analyseBtn", "linkInput", "linkForm",
-                           "aurora", "grain", "status", "player"):
+                           "aurora", "grain", "status", "player",
+                           # transport
+                           "transport", "seek", "playToggle", "playIcon", "clock",
+                           # effects and static-mode help
+                           "heroParticles", "bgSwitch", "profileCard", "installBox"):
             self.assertIn(f'id="{element_id}"', html)
+
+    def test_effects_used_by_the_app_are_exported(self):
+        """app.js calls these by name; a rename in one file breaks the page
+        silently, because a missing method is only found when it is called."""
+        app = (WEB_DIR / "app.js").read_text(encoding="utf-8")
+        effects = (WEB_DIR / "effects.js").read_text(encoding="utf-8")
+        used = sorted(set(re.findall(r"Effects\.([a-zA-Z]+)\(", app)))
+        self.assertTrue(used, "no Effects calls found; this test is not looking at the right file")
+        exported = effects.split("return {")[-1].split("};")[0]
+        for name in used:
+            with self.subTest(effect=name):
+                self.assertIn(name, exported, f"app.js calls Effects.{name} but effects.js never returns it")
+
+    def test_the_transport_has_an_accessible_slider(self):
+        """A scrubber nobody can reach from the keyboard is not finished."""
+        effects = (WEB_DIR / "effects.js").read_text(encoding="utf-8")
+        for required in ("role', 'slider'", "aria-valuenow", "aria-valuemax", "tabindex"):
+            self.assertIn(required, effects)
 
     def test_hidden_attribute_is_not_overridden(self):
         """An id selector setting `display` beats [hidden]; the CSS must undo it."""

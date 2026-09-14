@@ -25,13 +25,20 @@ const ui = {
   trackTitle: el('trackTitle'), trackArtist: el('trackArtist'),
   trackArt: el('trackArt'), trackBadges: el('trackBadges'),
   player: el('player'), playerFrame: el('playerFrame'), audio: el('audio'),
-  heroTitle: el('heroTitle'),
+  heroTitle: el('heroTitle'), heroParticles: el('heroParticles'),
+  installBox: el('installBox'), installCmd: el('installCmd'), installCopy: el('installCopy'),
+  transport: el('transport'), seek: el('seek'), playToggle: el('playToggle'),
+  playIcon: el('playIcon'), clock: el('clock'), playerNote: el('playerNote'),
+  bgSwitch: el('bgSwitch'), profileCard: el('profileCard'),
+  profileAvatar: el('profileAvatar'), profileName: el('profileName'),
 };
 
 let current = null;
 let isolated = null;
 let auroraHandle = null;
 let wavesHandle = null;
+let grainientHandle = null;
+let topographyHandle = null;
 let stopStatusAnimation = null;
 
 /* ------------------------------------------------------------- palette -- */
@@ -263,17 +270,26 @@ function show(verse) {
   setupPlayback(verse);
   Effects.revealOnScroll();
 
-  // Both background fields read the analysis: the denser the verse, the more
-  // energy in the aurora and the more swell in the waves.
+  paintAmbience(verse);
+}
+
+/* The background reads the analysis: the denser the verse, the more energy in
+ * the field behind it and the more swell in the waves. Extracted so switching
+ * background re-applies the current verse rather than starting flat. */
+function paintAmbience(verse) {
   const density = (verse.metrics?.density ?? 0) / 100;
   const strongest = (verse.groups || [])[0];
-  if (auroraHandle) {
-    auroraHandle.setEnergy(0.22 + density * 0.6);
-    if (strongest) auroraHandle.setHue(hueFor(strongest.label) * 0.35);
+  const hue = strongest ? hueFor(strongest.label) : null;
+
+  const field = auroraHandle || grainientHandle;
+  if (field) {
+    field.setEnergy(0.22 + density * 0.6);
+    if (hue !== null) field.setHue(hue * 0.35);
   }
+  if (topographyHandle && hue !== null) topographyHandle.setHue(hue);
   if (wavesHandle) {
     wavesHandle.setLevel(0.14 + density * 0.5);
-    if (strongest) wavesHandle.setHue(hueFor(strongest.label));
+    if (hue !== null) wavesHandle.setHue(hue);
   }
 }
 
@@ -346,24 +362,139 @@ let timed = [];
 let playing = null;
 let playingLine = null;
 let timedLines = [];
-let ytPlayer = null;
-let ytTicker = 0;
+let transport = null;      // the controller for whatever is currently playing
+let seekSlider = null;
+let clock = null;
+let ticker = 0;
+// The length the resolver reported. The player's own duration() is preferred
+// once it has one, but an embed that is still loading - or blocked - reports 0,
+// and a clock reading "0:16 / 0:00" is worse than no clock at all.
+let knownDuration = 0;
 
 function clearPlaying() {
   if (playing) { playing.node.classList.remove('playing'); playing = null; }
   if (playingLine) { playingLine.node.classList.remove('playing-line'); playingLine = null; }
 }
 
-function setupPlayback(verse) {
-  timed = [];
-  timedLines = [];
+/* One interface over two very different players.
+ *
+ * YouTube's iframe API is asynchronous, method-based and reports state through
+ * callbacks; an <audio> element is synchronous and property-based. Everything
+ * downstream - the scrubber, the clock, the highlight, click-to-seek - only
+ * needs play/pause/seek/time/duration, so both are wrapped to provide exactly
+ * that and nothing else has to know which is behind it. */
+
+function youTubeController(videoId, onReady) {
+  let player = null;
+  let ready = false;
+
+  ui.playerFrame.hidden = false;
+  ui.playerFrame.innerHTML =
+    `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1&rel=0"
+             title="Track playback" allow="accelerometer; autoplay; encrypted-media; picture-in-picture"
+             allowfullscreen loading="lazy"></iframe>`;
+
+  const start = () => {
+    const iframe = ui.playerFrame.querySelector('iframe');
+    if (!iframe || !window.YT || !window.YT.Player) return;
+    player = new window.YT.Player(iframe, {
+      events: {
+        onReady: () => { ready = true; onReady(); },
+        onStateChange: () => refreshPlayButton(),
+      },
+    });
+  };
+
+  if (window.YT && window.YT.Player) {
+    start();
+  } else {
+    if (!document.getElementById('yt-iframe-api')) {
+      const script = document.createElement('script');
+      script.id = 'yt-iframe-api';
+      script.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(script);
+    }
+    // The API calls this global once it has loaded.
+    const previous = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { if (previous) previous(); start(); };
+  }
+
+  const alive = () => ready && player && typeof player.getCurrentTime === 'function';
+
+  return {
+    kind: 'youtube',
+    play() { if (alive()) player.playVideo(); },
+    pause() { if (alive()) player.pauseVideo(); },
+    seek(time) { if (alive()) player.seekTo(time, true); },
+    time() { return alive() ? player.getCurrentTime() : 0; },
+    duration() { return alive() ? player.getDuration() : 0; },
+    isPlaying() { return alive() && player.getPlayerState() === 1; },
+    setRate(rate) { if (alive() && player.setPlaybackRate) player.setPlaybackRate(rate); },
+    destroy() {
+      ready = false;
+      if (player && player.destroy) { try { player.destroy(); } catch (_) { /* already gone */ } }
+      player = null;
+    },
+  };
+}
+
+function audioController(src, onReady) {
+  ui.audio.src = src;
+  ui.audio.hidden = false;
+  ui.audio.addEventListener('loadedmetadata', onReady, { once: true });
+  ui.audio.addEventListener('play', refreshPlayButton);
+  ui.audio.addEventListener('pause', refreshPlayButton);
+
+  return {
+    kind: 'audio',
+    play() { ui.audio.play().catch(() => {}); },
+    pause() { ui.audio.pause(); },
+    seek(time) { ui.audio.currentTime = time; },
+    time() { return ui.audio.currentTime || 0; },
+    duration() { return Number.isFinite(ui.audio.duration) ? ui.audio.duration : 0; },
+    isPlaying() { return !ui.audio.paused; },
+    setRate(rate) { ui.audio.playbackRate = rate; },
+    destroy() { ui.audio.pause(); ui.audio.removeAttribute('src'); ui.audio.load(); },
+  };
+}
+
+const PLAY_PATH = 'M8 5v14l11-7z';
+const PAUSE_PATH = 'M6 5h4v14H6zM14 5h4v14h-4z';
+
+function refreshPlayButton() {
+  if (!transport) return;
+  const playingNow = transport.isPlaying();
+  ui.playIcon.firstElementChild.setAttribute('d', playingNow ? PAUSE_PATH : PLAY_PATH);
+  ui.playToggle.setAttribute('aria-label', playingNow ? 'Pause' : 'Play');
+}
+
+function formatTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
+  const total = Math.floor(seconds);
+  const minutes = Math.floor(total / 60);
+  return `${minutes}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function teardownPlayback() {
+  clearInterval(ticker);
+  ticker = 0;
   clearPlaying();
-  clearInterval(ytTicker);
-  ytPlayer = null;
+  if (transport) { transport.destroy(); transport = null; }
+  knownDuration = 0;
+  if (seekSlider) { seekSlider.destroy(); seekSlider = null; }
+  if (clock) { clock.destroy(); clock = null; }
   ui.playerFrame.hidden = true;
   ui.playerFrame.innerHTML = '';
   ui.audio.hidden = true;
   ui.player.hidden = true;
+  ui.transport.hidden = true;
+  ui.lyrics.classList.remove('seekable');
+}
+
+function setupPlayback(verse) {
+  timed = [];
+  timedLines = [];
+  teardownPlayback();
 
   const source = verse.source || {};
 
@@ -388,49 +519,97 @@ function setupPlayback(verse) {
   if (source.kind === 'youtube' && source.video_id) {
     // Embed YouTube's own player: playback stays on the platform licensed to
     // serve it, and nothing copyrighted is downloaded or hosted here.
-    mountYouTube(source.video_id);
+    transport = youTubeController(source.video_id, onPlayerReady);
     ui.player.hidden = false;
   } else if (verse.audio) {
-    ui.audio.src = verse.audio;
-    ui.audio.hidden = false;
+    transport = audioController(verse.audio, onPlayerReady);
     ui.player.hidden = false;
+  } else {
+    return;
   }
+
+  mountTransport(source);
 }
 
-function mountYouTube(videoId) {
-  ui.playerFrame.hidden = false;
-  ui.playerFrame.innerHTML =
-    `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?enablejsapi=1&rel=0"
-             title="Track playback" allow="accelerometer; autoplay; encrypted-media; picture-in-picture"
-             allowfullscreen loading="lazy"></iframe>`;
+function mountTransport(source) {
+  ui.transport.hidden = false;
+  ui.lyrics.classList.add('seekable');
 
-  const start = () => {
-    const iframe = ui.playerFrame.querySelector('iframe');
-    if (!iframe || !window.YT || !window.YT.Player) return;
-    ytPlayer = new window.YT.Player(iframe, {
-      events: {
-        onReady: () => {
-          clearInterval(ytTicker);
-          ytTicker = setInterval(() => {
-            if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
-              highlightAt(ytPlayer.getCurrentTime());
-            }
-          }, 120);
-        },
-      },
-    });
-  };
+  knownDuration = source.duration || 0;
+  seekSlider = Effects.elasticSlider(ui.seek, {
+    label: 'Seek through the track',
+    max: knownDuration,
+    // While scrubbing, move the highlight with the thumb but do not touch the
+    // player: seeking on every pointer move makes YouTube stutter badly.
+    onInput: (value) => { paintClock(value); highlightAt(value); },
+    onCommit: (value) => { if (transport) transport.seek(value); },
+  });
 
-  if (window.YT && window.YT.Player) { start(); return; }
-  if (!document.getElementById('yt-iframe-api')) {
-    const script = document.createElement('script');
-    script.id = 'yt-iframe-api';
-    script.src = 'https://www.youtube.com/iframe_api';
-    document.head.appendChild(script);
+  clock = Effects.splitFlap(ui.clock, `0:00 / ${formatTime(knownDuration)}`);
+
+  ui.playerNote.textContent = timed.length
+    ? 'Rhymes light up word by word. Click any line to jump there.'
+    : 'Lyrics are timed per line. Click any line to jump there.';
+}
+
+function onPlayerReady() {
+  refreshPlayButton();
+  const total = totalDuration();
+  if (total > 0 && seekSlider) seekSlider.setMax(total);
+
+  clearInterval(ticker);
+  ticker = setInterval(() => {
+    if (!transport) return;
+    const now = transport.time();
+    if (seekSlider && !seekSlider.isScrubbing()) {
+      seekSlider.setValue(now);
+      paintClock(now);
+      highlightAt(now);
+    }
+  }, 120);
+}
+
+function totalDuration() {
+  const reported = transport ? transport.duration() : 0;
+  return reported > 0 ? reported : knownDuration;
+}
+
+function paintClock(now) {
+  if (!clock) return;
+  clock.set(`${formatTime(now)} / ${formatTime(totalDuration())}`);
+}
+
+function togglePlay() {
+  if (!transport) return;
+  if (transport.isPlaying()) transport.pause();
+  else transport.play();
+  // YouTube reports the change through onStateChange; <audio> through events.
+  setTimeout(refreshPlayButton, 120);
+}
+
+/* Clicking a line jumps the track to it. This is the pairing that makes the
+ * analysis audible: see a rhyme, hear it. */
+function seekToNode(node) {
+  if (!transport) return;
+  const line = node.closest('.line');
+  const syllable = node.closest('.syllable[data-start]');
+
+  let target = null;
+  if (syllable) target = +syllable.dataset.start;
+  else if (line) {
+    const index = Number(line.dataset.index);
+    const match = timedLines.find((item) => item.node === line)
+      || timed.find((item) => item.node.closest('.line') === line);
+    if (match) target = match.start;
+    else if (Number.isFinite(index) && timedLines[index]) target = timedLines[index].start;
   }
-  // The API calls this global once it has loaded.
-  const previous = window.onYouTubeIframeAPIReady;
-  window.onYouTubeIframeAPIReady = () => { if (previous) previous(); start(); };
+
+  if (target === null || !Number.isFinite(target)) return;
+  transport.seek(target);
+  if (seekSlider) seekSlider.setValue(target);
+  paintClock(target);
+  highlightAt(target);
+  if (!transport.isPlaying()) transport.play();
 }
 
 function seek(items, time) {
@@ -447,9 +626,11 @@ function seek(items, time) {
 }
 
 function reactTo(label) {
+  const background = grainientHandle || auroraHandle;
   if (label) {
     const hue = hueFor(label);
-    if (auroraHandle) auroraHandle.setHue(hue * 0.4);
+    if (background) background.setHue(hue * 0.4);
+    if (topographyHandle) topographyHandle.setHue(hue);
     if (wavesHandle) { wavesHandle.setHue(hue); wavesHandle.setLevel(0.72); }
   } else if (wavesHandle) {
     wavesHandle.setLevel(0.22);
@@ -490,6 +671,53 @@ function highlightLineAt(time) {
     counts.forEach((count, label) => { if (count > bestCount) { best = label; bestCount = count; } });
     reactTo(best);
   }
+}
+
+
+/* ---------------------------------------------------------- backgrounds -- */
+
+/* Three backgrounds, one at a time.
+ *
+ * Not stacked. Measuring this page previously showed that full-viewport
+ * compositing is what costs frames - three simultaneous full-screen canvases
+ * would undo the work that got it from 17fps to 61. Switching is instant and
+ * the choice is remembered, so nothing is lost by only running one. */
+
+const BACKGROUNDS = {
+  aurora: () => { auroraHandle = Effects.aurora(ui.aurora); Effects.noise(ui.grain); },
+  // Grain is drawn into the gradient's own buffer, so the separate grain layer
+  // is not needed and is left switched off.
+  grainient: () => { grainientHandle = Effects.grainient(ui.aurora); },
+  topography: () => { topographyHandle = Effects.topography(ui.aurora); Effects.noise(ui.grain); },
+};
+
+function applyBackground(name) {
+  const chosen = BACKGROUNDS[name] ? name : 'aurora';
+
+  [auroraHandle, grainientHandle, topographyHandle].forEach((handle) => {
+    if (handle && handle.destroy) handle.destroy();
+  });
+  auroraHandle = grainientHandle = topographyHandle = null;
+  ui.grain.style.opacity = chosen === 'grainient' ? '0' : '';
+
+  BACKGROUNDS[chosen]();
+  try { localStorage.setItem('rhymemap-bg', chosen); } catch (_) { /* private mode */ }
+
+  if (ui.bgSwitch) {
+    ui.bgSwitch.querySelectorAll('.bg-btn').forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.bg === chosen));
+    });
+  }
+
+  // Re-apply the current verse's energy to whichever canvas is now running.
+  if (current) paintAmbience(current);
+}
+
+function setupBackgrounds() {
+  if (!ui.bgSwitch) return;
+  ui.bgSwitch.querySelectorAll('.bg-btn').forEach((button) => {
+    button.addEventListener('click', () => applyBackground(button.dataset.bg));
+  });
 }
 
 /* ---------------------------------------------------------------- server -- */
@@ -610,12 +838,46 @@ function init() {
     ui.heroLede.hidden = true;
     ui.heroLedeStatic.hidden = false;
     ui.staticCta.hidden = false;
+
+    // The one question a visitor actually arrives with is "where do I paste a
+    // link?". Answer it with the command rather than a sentence about it.
+    ui.installBox.hidden = false;
+    ui.installCopy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(ui.installCmd.textContent.trim());
+        ui.installCopy.textContent = 'Copied';
+      } catch (_) {
+        // Clipboard access is refused over plain http and in some browsers;
+        // selecting the text is the fallback that always works.
+        const range = document.createRange();
+        range.selectNodeContents(ui.installCmd);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        ui.installCopy.textContent = 'Select & copy';
+      }
+      setTimeout(() => { ui.installCopy.textContent = 'Copy'; }, 2200);
+    });
   }
 
-  auroraHandle = Effects.aurora(ui.aurora);
   wavesHandle = Effects.waves(ui.waves);
-  Effects.noise(ui.grain);
-  Effects.splitText(ui.heroTitle);
+  applyBackground(localStorage.getItem('rhymemap-bg') || 'aurora');
+
+  // The headline assembles out of particles, then hands back to the real <h1>.
+  // splitText is the fallback: it is what runs under prefers-reduced-motion,
+  // where the particle flight is suppressed.
+  if (Effects.prefersReducedMotion()) {
+    Effects.splitText(ui.heroTitle);
+  } else {
+    requestAnimationFrame(() => Effects.particleText(ui.heroTitle, ui.heroParticles));
+  }
+
+  document.querySelectorAll('.panel').forEach((panel) => Effects.borderGlow(panel));
+  if (ui.profileCard) { Effects.tilt(ui.profileCard, 8); Effects.glare(ui.profileCard); }
+  if (ui.profileAvatar) {
+    // Fall back to the initial rather than a broken-image icon.
+    ui.profileAvatar.addEventListener('error', () => { ui.profileAvatar.hidden = true; });
+  }
   Effects.clickSpark(document.body);
   Effects.magnet(ui.analyse);
   Effects.scrollProgress(ui.progress);
@@ -671,8 +933,12 @@ function init() {
     if (!isolated) trace(null);
   });
   ui.lyrics.addEventListener('click', (event) => {
+    // A labelled syllable isolates its rhyme group; anywhere else on a line
+    // seeks the track there. Both stay reachable: the sidebar isolates too, and
+    // most of a line is not a labelled syllable.
     const node = event.target.closest('.syllable[data-label]');
-    if (node) toggleIsolate(node.dataset.label);
+    if (node) { toggleIsolate(node.dataset.label); return; }
+    if (ui.lyrics.classList.contains('seekable')) seekToNode(event.target);
   });
 
   ui.trackSelect.addEventListener('change', (event) => {
@@ -687,6 +953,30 @@ function init() {
     const on = document.body.classList.toggle('dim');
     ui.dimToggle.setAttribute('aria-pressed', String(on));
   });
+
+  ui.playToggle.addEventListener('click', togglePlay);
+
+  ui.transport.querySelectorAll('.rate-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      const rate = Number(button.dataset.rate);
+      if (transport) transport.setRate(rate);
+      ui.transport.querySelectorAll('.rate-btn').forEach((other) => {
+        other.setAttribute('aria-pressed', String(other === button));
+      });
+    });
+  });
+
+  // Space plays and pauses, the way every media player does - but never while
+  // someone is typing a link or pasting lyrics.
+  document.addEventListener('keydown', (event) => {
+    if (event.code !== 'Space' || !transport) return;
+    const tag = (event.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'button' || event.target.isContentEditable) return;
+    event.preventDefault();
+    togglePlay();
+  });
+
+  setupBackgrounds();
 
   ['timeupdate', 'seeked', 'loadedmetadata'].forEach((event) => {
     ui.audio.addEventListener(event, () => { if (timed.length) highlightAt(ui.audio.currentTime); });

@@ -490,10 +490,480 @@ const Effects = (() => {
     document.startViewTransition(update);
   }
 
+
+  /* ---------- SplitFlap ----------
+   *
+   * An airport departure board. Only the characters that actually changed are
+   * flipped, which matters here because this drives the playback clock: it
+   * updates several times a second, and animating all eight glyphs every tick
+   * would be both wrong to look at and wasteful.
+   */
+
+  function splitFlap(root, initial = '') {
+    const cells = new Map();
+
+    function cell(index, char) {
+      let node = cells.get(index);
+      if (!node) {
+        node = document.createElement('span');
+        node.className = 'flap';
+        node.innerHTML = '<span class="flap-face"></span>';
+        root.appendChild(node);
+        cells.set(index, node);
+      }
+      return node;
+    }
+
+    function set(text) {
+      const chars = String(text).split('');
+
+      // Drop cells the new text no longer needs.
+      cells.forEach((node, index) => {
+        if (index >= chars.length) { node.remove(); cells.delete(index); }
+      });
+
+      chars.forEach((char, index) => {
+        const node = cell(index, char);
+        const face = node.firstChild;
+        if (face.textContent === char) return;
+
+        face.textContent = char;
+        node.classList.toggle('flap-static', char === ':' || char === '/' || char === ' ');
+        if (prefersReducedMotion()) return;
+
+        // Restart the animation even if it is already running.
+        node.classList.remove('flipping');
+        void node.offsetWidth;
+        node.classList.add('flipping');
+      });
+    }
+
+    set(initial);
+    return { set, destroy() { cells.forEach((node) => node.remove()); cells.clear(); } };
+  }
+
+  /* ---------- ElasticSlider ----------
+   *
+   * A slider that stretches under the pointer and springs back. Used for the
+   * playback scrubber.
+   *
+   * Built on a div rather than <input type="range"> because the elastic
+   * deformation needs control of the track geometry, so the ARIA slider
+   * contract is implemented by hand: role, the three values, focus, and arrow
+   * keys. A scrubber nobody can reach from the keyboard is not finished.
+   */
+
+  function elasticSlider(root, options = {}) {
+    const onInput = options.onInput || (() => {});
+    const onCommit = options.onCommit || (() => {});
+    const onScrubStart = options.onScrubStart || (() => {});
+    const step = options.step || 5;
+
+    root.classList.add('eslider');
+    root.innerHTML =
+      '<div class="eslider-track">' +
+        '<div class="eslider-fill"></div>' +
+        '<div class="eslider-thumb"></div>' +
+      '</div>';
+
+    const track = root.querySelector('.eslider-track');
+    const fill = root.querySelector('.eslider-fill');
+    const thumb = root.querySelector('.eslider-thumb');
+
+    root.setAttribute('role', 'slider');
+    root.setAttribute('tabindex', '0');
+    root.setAttribute('aria-label', options.label || 'Seek');
+
+    let max = Math.max(0, options.max || 0);
+    let value = 0;          // the committed position
+    let shown = 0;          // what is drawn; springs towards `value`
+    let scrubbing = false;
+    let overshoot = 0;      // how far past an end the pointer has been dragged
+
+    const ratio = () => (max > 0 ? Math.min(1, Math.max(0, shown / max)) : 0);
+
+    function paint() {
+      const r = ratio();
+      fill.style.transform = `scaleX(${r})`;
+      thumb.style.left = `${r * 100}%`;
+      // Dragging past an end stretches the bar rather than doing nothing, which
+      // is the whole point of the effect: the control feels physical.
+      const stretch = 1 + Math.min(0.5, Math.abs(overshoot) * 0.6);
+      track.style.transform = `scaleY(${scrubbing ? 1.9 : 1}) scaleX(${stretch})`;
+      track.style.transformOrigin = overshoot < 0 ? 'right center' : 'left center';
+      root.setAttribute('aria-valuemin', '0');
+      root.setAttribute('aria-valuemax', String(Math.round(max)));
+      root.setAttribute('aria-valuenow', String(Math.round(shown)));
+    }
+
+    const stop = addTask(() => {
+      // Critically damped enough to feel immediate without snapping.
+      const gap = value - shown;
+      if (Math.abs(gap) > 0.01) shown += gap * (scrubbing ? 0.5 : 0.18);
+      else shown = value;
+      if (!scrubbing && overshoot !== 0) {
+        overshoot *= 0.82;
+        if (Math.abs(overshoot) < 0.002) overshoot = 0;
+      }
+      paint();
+    });
+
+    function positionFrom(event) {
+      const box = track.getBoundingClientRect();
+      if (box.width <= 0) return { value: 0, over: 0 };
+      const raw = (event.clientX - box.left) / box.width;
+      return {
+        value: Math.min(1, Math.max(0, raw)) * max,
+        over: raw < 0 ? raw : (raw > 1 ? raw - 1 : 0),
+      };
+    }
+
+    function onPointerMove(event) {
+      if (!scrubbing) return;
+      const at = positionFrom(event);
+      value = at.value;
+      overshoot = at.over;
+      onInput(value);
+    }
+
+    function endScrub(event) {
+      if (!scrubbing) return;
+      scrubbing = false;
+      root.classList.remove('scrubbing');
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', endScrub);
+      window.removeEventListener('pointercancel', endScrub);
+      if (event && event.type !== 'pointercancel') onCommit(value);
+    }
+
+    root.addEventListener('pointerdown', (event) => {
+      if (max <= 0) return;
+      event.preventDefault();
+      scrubbing = true;
+      root.classList.add('scrubbing');
+      onScrubStart();
+      const at = positionFrom(event);
+      value = at.value;
+      overshoot = at.over;
+      onInput(value);
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', endScrub);
+      window.addEventListener('pointercancel', endScrub);
+    });
+
+    root.addEventListener('keydown', (event) => {
+      const jump = { ArrowLeft: -step, ArrowRight: step, ArrowDown: -step, ArrowUp: step };
+      if (event.key in jump) {
+        event.preventDefault();
+        value = Math.min(max, Math.max(0, value + jump[event.key]));
+        onInput(value);
+        onCommit(value);
+      } else if (event.key === 'Home' || event.key === 'End') {
+        event.preventDefault();
+        value = event.key === 'Home' ? 0 : max;
+        onInput(value);
+        onCommit(value);
+      }
+    });
+
+    return {
+      setValue(next) { if (!scrubbing) { value = next; } },
+      setMax(next) { max = Math.max(0, next || 0); },
+      isScrubbing: () => scrubbing,
+      destroy() { endScrub(null); stop(); },
+    };
+  }
+
+  /* ---------- BorderGlow ----------
+   *
+   * A light that follows the pointer around a panel's edge. Two CSS custom
+   * properties and a masked gradient, so it costs no JavaScript per frame -
+   * only a pointer listener that writes two numbers.
+   */
+
+  function borderGlow(element) {
+    if (prefersReducedMotion()) return () => {};
+    const onMove = (event) => {
+      const box = element.getBoundingClientRect();
+      element.style.setProperty('--glow-x', `${event.clientX - box.left}px`);
+      element.style.setProperty('--glow-y', `${event.clientY - box.top}px`);
+    };
+    element.classList.add('border-glow');
+    element.addEventListener('pointermove', onMove);
+    element.addEventListener('pointerenter', () => element.classList.add('glowing'));
+    element.addEventListener('pointerleave', () => element.classList.remove('glowing'));
+    return () => element.removeEventListener('pointermove', onMove);
+  }
+
+  /* ---------- ParticleText ----------
+   *
+   * The headline assembles out of drifting particles.
+   *
+   * The real <h1> stays in the DOM throughout and is never replaced by the
+   * canvas - it is only made transparent while the particles fly, then faded
+   * back in. Text rendered into a canvas cannot be read by a screen reader,
+   * selected, translated or found with ctrl-F, and a headline is exactly the
+   * text you least want to lose.
+   */
+
+  function particleText(element, canvas) {
+    const ctx = canvas.getContext('2d', { alpha: true });
+    if (!ctx || prefersReducedMotion()) return { destroy() {} };
+
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const box = element.getBoundingClientRect();
+    if (box.width < 2 || box.height < 2) return { destroy() {} };
+
+    canvas.width = Math.round(box.width * dpr);
+    canvas.height = Math.round(box.height * dpr);
+    canvas.style.width = `${box.width}px`;
+    canvas.style.height = `${box.height}px`;
+
+    const style = window.getComputedStyle(element);
+    ctx.scale(dpr, dpr);
+    ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.fillText(element.textContent.trim(), box.width / 2, box.height / 2);
+
+    // Sample the rendered glyphs on a grid; every lit pixel becomes a target.
+    const gap = box.width > 640 ? 4 : 3;
+    const image = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    const targets = [];
+    for (let y = 0; y < box.height; y += gap) {
+      for (let x = 0; x < box.width; x += gap) {
+        const px = Math.floor(x * dpr);
+        const py = Math.floor(y * dpr);
+        if (image[(py * canvas.width + px) * 4 + 3] > 128) targets.push({ x, y });
+      }
+    }
+    ctx.clearRect(0, 0, box.width, box.height);
+    if (!targets.length) return { destroy() {} };
+
+    const particles = targets.map((target) => {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 60 + Math.random() * 240;
+      return {
+        tx: target.x, ty: target.y,
+        x: target.x + Math.cos(angle) * distance,
+        y: target.y + Math.sin(angle) * distance,
+        hue: 18 + Math.random() * 300,
+        delay: Math.random() * 340,
+      };
+    });
+
+    const started = performance.now();
+    element.style.opacity = '0';
+
+    const stop = addTask((now) => {
+      const age = now - started;
+      ctx.clearRect(0, 0, box.width, box.height);
+
+      let settled = 0;
+      for (const p of particles) {
+        if (age < p.delay) { settled += 0; continue; }
+        p.x += (p.tx - p.x) * 0.085;
+        p.y += (p.ty - p.y) * 0.085;
+        const near = Math.abs(p.tx - p.x) + Math.abs(p.ty - p.y);
+        if (near < 0.6) settled += 1;
+        ctx.fillStyle = `hsla(${p.hue}, 85%, 66%, ${Math.min(1, 0.25 + (1 - near / 120))})`;
+        ctx.fillRect(p.x, p.y, 1.7, 1.7);
+      }
+
+      // Hand back to the real text once the shape has formed.
+      if (settled > particles.length * 0.92 || age > 4200) {
+        stop();
+        element.style.transition = 'opacity 520ms ease';
+        element.style.opacity = '1';
+        canvas.style.transition = 'opacity 520ms ease';
+        canvas.style.opacity = '0';
+        setTimeout(() => { ctx.clearRect(0, 0, box.width, box.height); }, 560);
+      }
+    });
+
+    return { destroy() { stop(); element.style.opacity = '1'; } };
+  }
+
+  /* ---------- Topography ----------
+   *
+   * Contour lines, like a survey map. The field is a sum of a few sine waves -
+   * cheap, and smooth enough that the contours read as terrain.
+   *
+   * Redrawn on a timer rather than every frame. Marching squares over the whole
+   * viewport is far too expensive at 60Hz, and the drift is slow enough that
+   * nobody can tell the difference; between redraws the canvas is simply
+   * translated, which the compositor does for free.
+   */
+
+  function topography(canvas) {
+    const ctx = canvas.getContext('2d', { alpha: true });
+    if (!ctx) return { destroy() {}, setHue() {} };
+
+    let width = 0, height = 0, hue = 26, raf = 0, timer = 0;
+    const cell = 14;
+    const levels = 11;
+
+    function resize() {
+      width = canvas.width = Math.round(window.innerWidth / 2);
+      height = canvas.height = Math.round(window.innerHeight / 2);
+    }
+
+    function field(x, y, t) {
+      return (
+        Math.sin(x * 0.015 + t) * 1.0 +
+        Math.sin(y * 0.021 - t * 0.8) * 0.9 +
+        Math.sin((x + y) * 0.011 + t * 0.5) * 0.8 +
+        Math.sin(Math.hypot(x - width / 2, y - height / 2) * 0.013 - t) * 0.7
+      );
+    }
+
+    function draw(t) {
+      ctx.clearRect(0, 0, width, height);
+      ctx.lineWidth = 1.25;
+
+      for (let level = 0; level < levels; level += 1) {
+        const threshold = -2.6 + (level / (levels - 1)) * 5.2;
+        ctx.beginPath();
+        for (let y = 0; y < height; y += cell) {
+          for (let x = 0; x < width; x += cell) {
+            // Marching squares, reduced to the two segments that matter for a
+            // line drawing: interpolate where the contour crosses each edge.
+            const a = field(x, y, t);
+            const b = field(x + cell, y, t);
+            const c = field(x + cell, y + cell, t);
+            const d = field(x, y + cell, t);
+            const cross = (p, q) => (threshold - p) / (q - p || 1e-6);
+
+            if ((a < threshold) !== (b < threshold)) {
+              const u = cross(a, b);
+              ctx.moveTo(x + cell * u, y);
+              if ((b < threshold) !== (c < threshold)) {
+                ctx.lineTo(x + cell, y + cell * cross(b, c));
+              } else if ((a < threshold) !== (d < threshold)) {
+                ctx.lineTo(x, y + cell * cross(a, d));
+              }
+            } else if ((d < threshold) !== (c < threshold) && (a < threshold) !== (d < threshold)) {
+              ctx.moveTo(x, y + cell * cross(a, d));
+              ctx.lineTo(x + cell * cross(d, c), y + cell);
+            }
+          }
+        }
+        // Quiet, but it has to be visible: at 0.05 the contours were below the
+        // threshold where anyone could see there was a background at all.
+        const fade = 0.13 + 0.06 * Math.sin(level * 0.9);
+        ctx.strokeStyle = `hsla(${hue}, 62%, 66%, ${fade})`;
+        ctx.stroke();
+      }
+    }
+
+    resize();
+    let phase = 0;
+    draw(phase);
+
+    if (!prefersReducedMotion()) {
+      timer = setInterval(() => {
+        phase += 0.05;
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => draw(phase));
+      }, 110);
+    }
+
+    const onResize = () => { resize(); draw(phase); };
+    window.addEventListener('resize', onResize);
+
+    return {
+      setHue(next) { hue = next; },
+      destroy() {
+        clearInterval(timer);
+        cancelAnimationFrame(raf);
+        window.removeEventListener('resize', onResize);
+        ctx.clearRect(0, 0, width, height);
+      },
+    };
+  }
+
+  /* ---------- Grainient ----------
+   *
+   * A mesh gradient with grain baked into the same canvas.
+   *
+   * Grain is usually a second full-viewport layer composited over the gradient.
+   * Measuring this page showed full-viewport compositing is what costs frames,
+   * so the noise is drawn into the gradient's own buffer instead: one layer,
+   * one upload. The buffer is a fraction of the display size and the browser's
+   * upscaling supplies the blur for free.
+   */
+
+  function grainient(canvas) {
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (!ctx) return { destroy() {}, setHue() {}, setEnergy() {} };
+
+    const SCALE = 0.16;
+    let width = 0, height = 0, hue = 26, energy = 0.3;
+
+    const blobs = [
+      { h: 0,   x: 0.2, y: 0.2, r: 0.75, dx: 0.00004,  dy: 0.000031 },
+      { h: 40,  x: 0.8, y: 0.3, r: 0.66, dx: -0.000033, dy: 0.000026 },
+      { h: 200, x: 0.5, y: 0.8, r: 0.82, dx: 0.000027, dy: -0.000036 },
+      { h: 300, x: 0.15, y: 0.7, r: 0.6, dx: 0.000038, dy: -0.000022 },
+    ];
+
+    function resize() {
+      width = canvas.width = Math.max(2, Math.round(window.innerWidth * SCALE));
+      height = canvas.height = Math.max(2, Math.round(window.innerHeight * SCALE));
+    }
+    resize();
+
+    // One tile of noise, reused every frame. Generating fresh noise per frame is
+    // the expensive way to do this and looks no different at this scale.
+    const grain = document.createElement('canvas');
+    grain.width = grain.height = 64;
+    const gctx = grain.getContext('2d');
+    const image = gctx.createImageData(64, 64);
+    for (let i = 0; i < image.data.length; i += 4) {
+      const shade = 120 + Math.random() * 135;
+      image.data[i] = image.data[i + 1] = image.data[i + 2] = shade;
+      image.data[i + 3] = 16;
+    }
+    gctx.putImageData(image, 0, 0);
+    const pattern = ctx.createPattern(grain, 'repeat');
+
+    const stop = addTask((now) => {
+      ctx.fillStyle = '#08070a';
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.globalCompositeOperation = 'lighter';
+      for (const blob of blobs) {
+        const x = (0.5 + Math.sin(now * blob.dx + blob.x * 9) * 0.42) * width;
+        const y = (0.5 + Math.cos(now * blob.dy + blob.y * 9) * 0.42) * height;
+        const radius = blob.r * Math.max(width, height) * 0.6;
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+        const alpha = 0.16 + energy * 0.3;
+        gradient.addColorStop(0, `hsla(${(hue + blob.h) % 360}, 82%, 58%, ${alpha})`);
+        gradient.addColorStop(1, 'hsla(0, 0%, 0%, 0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+
+      if (pattern) { ctx.fillStyle = pattern; ctx.fillRect(0, 0, width, height); }
+    });
+
+    const onResize = () => resize();
+    window.addEventListener('resize', onResize);
+
+    return {
+      setHue(next) { hue = next; },
+      setEnergy(next) { energy = Math.min(1, Math.max(0, next)); },
+      destroy() { stop(); window.removeEventListener('resize', onResize); },
+    };
+  }
+
   return {
     prefersReducedMotion, aurora, noise, splitText, countUp,
     clickSpark, magnet, spotlight, scramble, scrambleLoop, revealOnScroll,
     waves, rotatingText, glare, tilt, scrollProgress, swap,
+    splitFlap, elasticSlider, borderGlow, particleText, topography, grainient,
   };
 })();
 

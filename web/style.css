@@ -817,3 +817,319 @@ footer a { color: var(--ink-2); }
     transition-duration: .001ms !important;
   }
 }
+
+/* ================================================================ v4.1 == */
+/* Transport, and the effects ported from react-bits patterns.             */
+
+/* ---------------------------------------------------------- SplitFlap -- */
+/* An airport board for the playback clock. Only changed glyphs flip.       */
+
+.flapboard { display: inline-flex; gap: 1px; font-family: var(--font-mono); }
+
+.flap {
+  position: relative;
+  display: inline-block;
+  min-width: .62em;
+  padding: 2px 1px;
+  text-align: center;
+  background: var(--surface-3);
+  border-radius: 3px;
+  perspective: 220px;
+}
+.flap-static { background: none; min-width: .34em; }
+.flap-face { display: block; }
+
+.flap.flipping .flap-face {
+  animation: flap-turn 260ms var(--ease-out);
+  transform-origin: center top;
+}
+
+@keyframes flap-turn {
+  0%   { transform: rotateX(-88deg); opacity: .25; }
+  60%  { transform: rotateX(8deg);   opacity: 1; }
+  100% { transform: rotateX(0);      opacity: 1; }
+}
+
+/* ------------------------------------------------------ ElasticSlider -- */
+/* Stretches under the pointer, springs back on release.                    */
+
+.eslider {
+  --eslider-h: 6px;
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 12px 0;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+
+.eslider-track {
+  position: relative;
+  height: var(--eslider-h);
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  transition: transform 220ms var(--ease-spring);
+  will-change: transform;
+}
+
+.eslider-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--accent-gradient);
+  border-radius: inherit;
+  transform-origin: left center;
+  will-change: transform;
+}
+
+.eslider-thumb {
+  position: absolute;
+  top: 50%;
+  width: 13px; height: 13px;
+  margin-left: -6.5px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: var(--glow-flame);
+  transform: translateY(-50%) scale(0);
+  transition: transform 200ms var(--ease-spring);
+  will-change: left, transform;
+}
+
+.eslider:hover .eslider-thumb,
+.eslider:focus-visible .eslider-thumb,
+.eslider.scrubbing .eslider-thumb { transform: translateY(-50%) scale(1); }
+
+.eslider:focus-visible .eslider-track { box-shadow: 0 0 0 2px var(--pulse); }
+
+@media (prefers-reduced-motion: reduce) {
+  .eslider-track, .eslider-thumb { transition: none; }
+}
+
+/* ------------------------------------------------------------ Transport */
+
+.transport { display: grid; gap: var(--gap-sm); }
+
+.transport-row { display: flex; align-items: center; gap: var(--gap); }
+
+.transport-btn {
+  flex: none;
+  width: 38px; height: 38px;
+  display: grid; place-items: center;
+  border: 1px solid var(--hairline-bright);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform var(--t-fast) var(--ease-out), border-color var(--t-fast);
+}
+.transport-btn:hover { transform: scale(1.08); border-color: var(--flame); }
+.transport-btn:active { transform: scale(.94); }
+.transport-btn svg { width: 15px; height: 15px; fill: currentColor; }
+
+.transport-time {
+  flex: none;
+  font-size: .72rem;
+  color: var(--ink-2);
+  letter-spacing: .02em;
+}
+
+.transport-rates { display: flex; gap: var(--gap-xs); margin-left: auto; }
+
+.rate-btn {
+  padding: 2px 7px;
+  font-family: var(--font-mono);
+  font-size: .66rem;
+  color: var(--ink-3);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.rate-btn:hover { color: var(--ink-2); }
+.rate-btn[aria-pressed="true"] { color: var(--flame); border-color: var(--flame); }
+
+/* A line the pointer can seek to. Only offered when there is timing behind
+   it, so the affordance never promises something that will not happen. */
+.lyrics.seekable .line { cursor: pointer; border-radius: 6px; }
+.lyrics.seekable .line:hover { background: rgba(255, 255, 255, .04); }
+
+/* ----------------------------------------------------------- BorderGlow */
+
+.border-glow { position: relative; isolation: isolate; }
+
+.border-glow::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: radial-gradient(180px circle at var(--glow-x, 50%) var(--glow-y, 50%),
+              var(--flame), transparent 65%);
+  /* Paint the border only: mask out the interior. */
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask-composite: exclude;
+  opacity: 0;
+  transition: opacity var(--t-base) var(--ease-out);
+  pointer-events: none;
+  z-index: 1;
+}
+.border-glow.glowing::before { opacity: .85; }
+
+/* --------------------------------------------------------- GlassSurface */
+
+.glass {
+  background: linear-gradient(160deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, .02));
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, .1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), var(--shadow-panel);
+}
+
+/* --------------------------------------------------------- ParticleText */
+
+.particle-host { position: relative; display: inline-block; }
+.particle-canvas { position: absolute; inset: 0; pointer-events: none; }
+
+/* --------------------------------------------- background switcher ----- */
+
+.bg-switch { display: flex; gap: 2px; align-items: center; }
+
+.bg-btn {
+  padding: 3px 9px;
+  font-size: .64rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.bg-btn:hover { color: var(--ink-2); }
+.bg-btn[aria-pressed="true"] { color: var(--flame); border-color: var(--hairline-bright); }
+
+/* ---------------------------------------------------------- ProfileCard */
+
+.author { display: grid; place-items: center; padding: var(--gap-3xl) var(--gap-md); }
+
+.profile-card {
+  position: relative;
+  width: min(330px, 100%);
+  padding: var(--gap-xl) var(--gap-lg) var(--gap-lg);
+  border-radius: var(--radius-xl);
+  text-align: center;
+  overflow: hidden;
+  transform-style: preserve-3d;
+}
+
+/* The holographic sweep: a wide sheen that rakes across as the card tilts. */
+.profile-card::after {
+  content: '';
+  position: absolute;
+  inset: -40%;
+  background: conic-gradient(from 210deg,
+    transparent, rgba(255, 138, 61, .22), rgba(92, 225, 230, .22), transparent 60%);
+  opacity: .5;
+  pointer-events: none;
+  animation: sheen 9s linear infinite;
+}
+@keyframes sheen { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) { .profile-card::after { animation: none; } }
+
+/* The photo sits over a lettered disc. If the image never arrives -- offline,
+   blocked, or the URL changed -- the initial shows instead of a broken icon. */
+.profile-avatar-wrap {
+  position: relative;
+  width: 96px; height: 96px;
+  margin: 0 auto var(--gap);
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent-gradient);
+  box-shadow: var(--glow-flame);
+  z-index: 1;
+}
+
+.profile-initials {
+  font-family: var(--font-display);
+  font-size: 2.4rem;
+  color: var(--void);
+}
+
+.profile-avatar {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, .18);
+}
+.profile-avatar[hidden] { display: none; }
+
+.profile-name {
+  position: relative; z-index: 1;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  margin: 0;
+}
+.profile-role {
+  position: relative; z-index: 1;
+  font-size: .78rem; color: var(--ink-2); margin: 2px 0 var(--gap-md);
+}
+.profile-links {
+  position: relative; z-index: 1;
+  display: flex; justify-content: center; gap: var(--gap-sm); flex-wrap: wrap;
+}
+.profile-link {
+  padding: 5px 13px;
+  font-size: .72rem;
+  color: var(--ink);
+  text-decoration: none;
+  border: 1px solid var(--hairline-bright);
+  border-radius: var(--radius-pill);
+  transition: border-color var(--t-fast), color var(--t-fast);
+}
+.profile-link:hover { border-color: var(--flame); color: var(--flame); }
+
+/* ------------------------------------------------- static-mode install -- */
+
+.install-box {
+  display: flex; align-items: center; gap: var(--gap-sm);
+  max-width: 440px;
+  margin: var(--gap-md) auto 0;
+  padding: 9px var(--gap);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: .78rem;
+  text-align: left;
+}
+.install-box code { flex: 1; color: var(--ink); overflow-x: auto; white-space: nowrap; }
+.install-copy {
+  flex: none;
+  padding: 3px 9px;
+  font-size: .68rem;
+  color: var(--ink-2);
+  background: var(--surface-3);
+  border: 0; border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.install-copy:hover { color: var(--ink); }
+
+/* A gutter marker so the seek affordance is visible, not guessed at. */
+.lyrics.seekable .line { position: relative; padding-left: 14px; margin-left: -14px; }
+.lyrics.seekable .line::before {
+  content: '';
+  position: absolute;
+  left: 2px; top: 50%;
+  width: 0; height: 0;
+  border-left: 6px solid var(--flame);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease-out);
+}
+.lyrics.seekable .line:hover::before { opacity: .85; }
