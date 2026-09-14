@@ -310,3 +310,39 @@ class TestServer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDecorationIsolation(unittest.TestCase):
+    """A failing effect must not be able to blank the page.
+
+    Every effect used to run unguarded in init(). One throw - a canvas context
+    refused, a WebGL call rejected, a browser missing something - and everything
+    after it was skipped, including the call that renders the analysis. The
+    result was a hero, a footer and nothing in between, with no clue why.
+
+    Verified in a browser by making the background effect throw: the analysis
+    still rendered 89 lines and 22 groups, identical to the healthy page.
+    """
+
+    def setUp(self):
+        self.app = (WEB_DIR / "app.js").read_text(encoding="utf-8")
+
+    def test_effects_run_through_the_guard(self):
+        self.assertIn("function decorate(", self.app)
+        body = self.app.split("function init()", 1)[1]
+        # Each of these is decoration; none of them may run bare in init().
+        for effect in ("waves", "borderGlow", "clickSpark", "magnet",
+                       "scrollProgress", "rotatingText", "spotlight"):
+            with self.subTest(effect=effect):
+                self.assertIn(f"'{effect}'", body,
+                              f"Effects.{effect} is not wrapped in decorate() in init()")
+
+    def test_the_guard_reports_rather_than_swallows(self):
+        """Silently ignoring a broken effect is how this stays broken."""
+        guard = self.app.split("function decorate(", 1)[1].split("\n}", 1)[0]
+        self.assertIn("console.error", guard)
+
+    def test_missing_songs_are_explained(self):
+        """data.js is generated, not committed; its absence must not be silent."""
+        self.assertIn("rhymeDataMissing", self.app)
+        self.assertIn("data.js is missing", self.app)

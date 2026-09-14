@@ -785,44 +785,71 @@ function populateTracks() {
   });
 }
 
+/* Decoration must never take the page down with it.
+ *
+ * Every effect below used to run unguarded in init(). One throw - a canvas
+ * context refused, a WebGL call rejected, a browser missing something - and
+ * everything after it was skipped, including the line that renders the
+ * analysis. The page then showed a hero, a footer, and nothing in between,
+ * with no clue why. The product is the analysis; the effects are decoration,
+ * and decoration that fails should fail alone and quietly. */
+function decorate(name, run) {
+  try {
+    return run();
+  } catch (error) {
+    console.error(`effect "${name}" failed and was skipped:`, error);
+    return null;
+  }
+}
+
 function init() {
   document.body.classList.add('dim');
 
-
-  wavesHandle = Effects.waves(ui.waves);
+  decorate('waves', () => { wavesHandle = Effects.waves(ui.waves); });
 
   // One background: the woven threads, on the GPU. Where there is no GPU to run
   // them on - no WebGL2, or a software renderer that would run the shader on the
   // CPU - the aurora takes over. It is the cheap 2D field this page used before
   // and it holds 60fps in exactly the conditions the shader does not.
-  threadsHandle = Effects.webThreads(ui.threads);
-  if (!threadsHandle.supported) threadsHandle = Effects.aurora(ui.threads);
-  Effects.noise(ui.grain);
+  decorate('background', () => {
+    threadsHandle = Effects.webThreads(ui.threads);
+    if (!threadsHandle || !threadsHandle.supported) threadsHandle = Effects.aurora(ui.threads);
+    Effects.noise(ui.grain);
+  });
 
   // The headline assembles out of particles, then hands back to the real <h1>.
   // splitText is the fallback: it is what runs under prefers-reduced-motion,
   // where the particle flight is suppressed.
-  if (Effects.prefersReducedMotion()) {
-    Effects.splitText(ui.heroTitle);
-  } else {
-    requestAnimationFrame(() => Effects.particleText(ui.heroTitle, ui.heroParticles));
-  }
+  decorate('headline', () => {
+    if (Effects.prefersReducedMotion()) {
+      Effects.splitText(ui.heroTitle);
+    } else {
+      requestAnimationFrame(() =>
+        decorate('particleText', () => Effects.particleText(ui.heroTitle, ui.heroParticles)));
+    }
+  });
 
-  document.querySelectorAll('.panel').forEach((panel) => Effects.borderGlow(panel));
-  if (ui.profileCard) { Effects.tilt(ui.profileCard, 8); Effects.glare(ui.profileCard); }
+  decorate('borderGlow', () =>
+    document.querySelectorAll('.panel').forEach((panel) => Effects.borderGlow(panel)));
+  decorate('profileCard', () => {
+    if (!ui.profileCard) return;
+    Effects.tilt(ui.profileCard, 8);
+    Effects.glare(ui.profileCard);
+  });
   if (ui.profileAvatar) {
     // Fall back to the initial rather than a broken-image icon.
     ui.profileAvatar.addEventListener('error', () => { ui.profileAvatar.hidden = true; });
   }
-  Effects.clickSpark(document.body);
-  Effects.magnet(ui.analyse);
-  Effects.scrollProgress(ui.progress);
-  const rotating = ['multisyllabic chains', 'slant rhymes', 'internal rhyme', 'assonance'];
-  Effects.rotatingText(ui.rotatingWord, rotating);
-  document.querySelectorAll('.panel').forEach(Effects.spotlight);
-  document.querySelectorAll('.stat').forEach((node) => { Effects.glare(node); Effects.tilt(node); });
+  decorate('clickSpark', () => Effects.clickSpark(document.body));
+  decorate('magnet', () => Effects.magnet(ui.analyse));
+  decorate('scrollProgress', () => Effects.scrollProgress(ui.progress));
+  decorate('rotatingText', () => Effects.rotatingText(ui.rotatingWord,
+    ['multisyllabic chains', 'slant rhymes', 'internal rhyme', 'assonance']));
+  decorate('spotlight', () => document.querySelectorAll('.panel').forEach(Effects.spotlight));
+  decorate('statTiles', () =>
+    document.querySelectorAll('.stat').forEach((node) => { Effects.glare(node); Effects.tilt(node); }));
   ui.lyrics.classList.add('fade-foot');
-  Effects.revealOnScroll();
+  decorate('reveal', () => Effects.revealOnScroll());
 
   ui.form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -928,7 +955,15 @@ function init() {
     populateTracks();
     show(verses[0]);
   } else {
+    // data.js is generated, not committed. If it is missing the page has no
+    // songs and used to render an empty shell in silence - a hero, a footer,
+    // and nothing in between. Say what happened instead.
     ui.trackSelect.innerHTML = '<option>nothing bundled</option>';
+    setStatus(
+      window.rhymeDataMissing
+        ? 'The bundled songs did not load (data.js is missing). Paste a link or some lyrics — that still works.'
+        : 'No songs are bundled in this build. Paste a link or some lyrics to analyse one.',
+      'warn');
   }
 }
 
