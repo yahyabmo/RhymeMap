@@ -220,6 +220,34 @@ class TestServer(unittest.TestCase):
         self.assertEqual(status, 413)
         self.assertIn("error", payload)
 
+    def test_assets_must_be_revalidated(self):
+        """No Cache-Control means the browser invents one.
+
+        The usual heuristic is a tenth of the file's age, during which it does
+        not ask the server at all - so a deploy lands and returning visitors
+        keep the old JavaScript with nothing to suggest why.
+        """
+        for path in ("/app.js", "/style.css", "/effects.js", "/"):
+            with self.subTest(path=path):
+                request = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}")
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    self.assertEqual(response.headers.get("Cache-Control"), "no-cache")
+
+    def test_revalidation_is_still_cheap(self):
+        """`no-cache` means revalidate, not re-download: a conditional request
+        must still answer 304 rather than resending the file."""
+        url = f"http://127.0.0.1:{self.port}/app.js"
+        with urllib.request.urlopen(url, timeout=30) as response:
+            last_modified = response.headers.get("Last-Modified")
+        self.assertTrue(last_modified)
+
+        request = urllib.request.Request(url, headers={"If-Modified-Since": last_modified})
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                self.fail(f"expected 304, got {response.status}")
+        except urllib.error.HTTPError as error:
+            self.assertEqual(error.code, 304)
+
     def test_range_request_returns_partial_content(self):
         """Browsers refuse to seek in media served without byte ranges."""
         request = urllib.request.Request(

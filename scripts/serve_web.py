@@ -169,6 +169,18 @@ class Handler(SimpleHTTPRequestHandler):
             b"Accept-Ranges" in chunk for chunk in self._headers_buffer
         ):
             self.send_header("Accept-Ranges", "bytes")
+
+        # Without a Cache-Control header the browser is free to invent one, and
+        # it does: the usual heuristic is a tenth of the file's age, during which
+        # it will not even ask the server. Deploy a new app.js and returning
+        # visitors keep the old one with nothing to suggest why.
+        #
+        # `no-cache` does not mean "do not store" - it means "always revalidate".
+        # The conditional request still answers 304 from Last-Modified, so this
+        # costs a round trip and no bytes.
+        if not any(b"Cache-Control" in chunk for chunk in (self._headers_buffer or [])):
+            self.send_header("Cache-Control", "no-cache")
+
         super().end_headers()
 
 
