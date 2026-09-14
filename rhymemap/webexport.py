@@ -109,6 +109,19 @@ def verse_to_dict(verse, artist: str, track: str, engine: str, chains=None, text
             "duration": song.duration,
             "captions": song.caption_kind,
             "language": song.language,
+            # Which source in the chain supplied these lyrics, and how finely it
+            # can be synchronised: "word", "line" or "none". The viewer shows
+            # both, because a reader is entitled to know whether they are
+            # looking at a human transcription or a machine's guess.
+            "provider": getattr(song, "provider", ""),
+            "sync": getattr(song, "sync", "none"),
+            # [start, end] per lyric line, when the timing is line-level. Named
+            # apart from "lines" above, which is the text.
+            "line_times": [[line.start, line.end] for line in getattr(song, "lines", [])],
+            "attempts": [
+                {"provider": attempt.provider, "ok": attempt.ok, "detail": attempt.detail}
+                for attempt in getattr(song, "attempts", [])
+            ],
         } if song is not None else None,
     }
 
