@@ -246,7 +246,11 @@ class TestLoad(unittest.TestCase):
         self.assertEqual(load("cat in the hat\nbat on the mat").source, "text")
 
     def test_routes_a_link_to_youtube(self):
-        with patch("rhymemap.sources.youtube._import_yt_dlp", return_value=fake_yt_dlp()):
+        # lrclib.fetch is substituted as well as yt-dlp: `load` takes no fetcher,
+        # and this fixture has no manual captions, so the chain reaches the
+        # lyrics lookup. Without this the test really called lrclib.net.
+        with patch("rhymemap.sources.youtube._import_yt_dlp", return_value=fake_yt_dlp()), \
+             patch("rhymemap.sources.lrclib.fetch", no_lyrics_online):
             self.assertEqual(load("https://youtu.be/dQw4w9WgXcQ").source, "youtube")
 
     def test_age_restriction_hint_mentions_cookies(self):

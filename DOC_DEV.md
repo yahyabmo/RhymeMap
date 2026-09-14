@@ -520,6 +520,17 @@ Two notes for anyone extending this:
   request dies with "cannot load module more than once per process".
 - Do **not** give a network function a default of `fetcher=fetch`. A default
   binds at import time and can never afterwards be replaced.
+- `load()` takes no fetcher, so a test calling it goes to the real lyrics
+  database unless `lrclib.fetch` is substituted too. One test did exactly this
+  and passed for weeks.
+
+`scripts/check_no_network.py` (`make test-offline`, and a CI step) runs the suite
+with every non-loopback connection blocked. It also blocks whatever `HTTPS_PROXY`
+points at: behind a proxy a request to lrclib.net opens a socket to `127.0.0.1`
+and the proxy makes the real call, so loopback-only filtering reports success
+while traffic is leaving the machine. The first version of this script had that
+hole, passed locally, and CI — with no proxy — caught four connections to
+lrclib's addresses on the next push.
 
 ---
 
