@@ -20,6 +20,28 @@ from rhymemap.phonetics import process_verse
 from rhymemap.sources import SourceError, from_text, load
 from rhymemap.visual import VisualEngine
 
+_PROVIDERS = {
+    "captions": "captions",
+    "lrclib-synced": "LRCLIB (community lyrics)",
+    "lrclib-plain": "LRCLIB (community lyrics)",
+    "pasted": "your own text",
+}
+
+
+def _provenance(song) -> str:
+    """Where the words came from and how finely they can be synchronised."""
+    name = _PROVIDERS.get(song.provider, song.provider or "unknown source")
+    if song.provider == "captions":
+        name = f"{song.caption_kind} captions" + (f" ({song.language})" if song.language else "")
+
+    if song.sync == "word":
+        timing = f"{len(song.timings)} word timings"
+    elif song.sync == "line":
+        timing = f"{len(song.lines)} line timings"
+    else:
+        timing = "no timing"
+    return f"{name}, {timing}"
+
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -54,8 +76,10 @@ def main(argv=None) -> int:
 
     print(f"\n{song.artist} - {song.title}")
     if song.source == "youtube":
-        detail = f"{song.caption_kind} captions ({song.language})"
-        print(f"  {song.line_count} lines, {len(song.timings)} timed words, {detail}")
+        print(f"  {song.line_count} lines, {_provenance(song)}")
+        for attempt in song.attempts:
+            if not attempt.ok:
+                print(f"    tried {attempt}")
     print()
 
     if args.lyrics_only:
