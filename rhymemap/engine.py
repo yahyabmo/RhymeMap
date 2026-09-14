@@ -1,7 +1,7 @@
 """Rhyme signatures and label assignment (the v1 exact-match engine).
 
 This module groups syllables by an exact string signature. It is kept as the
-documented baseline that the similarity engine in ``src/similarity.py`` is
+documented baseline that the similarity engine in ``rhymemap/similarity.py`` is
 measured against, so the ablation in ``eval/`` has something honest to compare
 to. Its defaults reproduce the original v1 behaviour exactly.
 """

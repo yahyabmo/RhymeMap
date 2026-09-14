@@ -127,7 +127,7 @@ Texte brut → Phonèmes (g2p_en) → Syllabes (syllabify) → Signatures → La
 
 - [ ] Vidéo YouTube intégrée dans Canva (tester le son)
 - [ ] Beat instrumental en fond pour le slide titre (5-10s)
-- [ ] Terminal prêt avec `python -m src.main` (testé, pas d'erreur)
+- [ ] Terminal prêt avec `python -m rhymemap.main` (testé, pas d'erreur)
 - [ ] Screenshot de backup du terminal coloré
 - [ ] Graphiques matplotlib exportés en PNG et insérés dans Canva
 - [ ] Répétition complète en 15 min (chronométrer)

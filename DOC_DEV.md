@@ -31,7 +31,7 @@ the result as coloured text, metrics, and figures.
 ## 2. Structure <a name="structure"></a>
 
 ```
-src/
+rhymemap/
   models.py      dataclasses (Syllable, Nucleus, Word, Line, Verse)
   cache.py       two-tier persistent memoisation
   phonetics.py   cleaning, phoneme lookup, syllabification
@@ -56,7 +56,7 @@ web/             browser viewer
 
 ---
 
-## 3. Data models (`src/models.py`) <a name="models"></a>
+## 3. Data models (`rhymemap/models.py`) <a name="models"></a>
 
 ### `Syllable`
 - `text` – orthographic slice used for display. **Approximate**: the spelling is
@@ -80,7 +80,7 @@ Containers. `Verse.syllables()` flattens the whole verse into one ordered list.
 
 ---
 
-## 4. Phonetics (`src/phonetics.py`) <a name="phonetics"></a>
+## 4. Phonetics (`rhymemap/phonetics.py`) <a name="phonetics"></a>
 
 - `clean_word(text)` – strip punctuation, lowercase, trim.
 - `lookup_variants(word)` – spellings to try against CMUdict before giving up:
@@ -102,7 +102,7 @@ command pay it, including `make test`.
 
 ---
 
-## 5. Rhyme engine (`src/engine.py`) <a name="engine"></a>
+## 5. Rhyme engine (`rhymemap/engine.py`) <a name="engine"></a>
 
 ### `label_for_index(i)`
 Maps `0,1,2,…` to `A,B,…,Z,AA,AB,…`. The previous implementation indexed a
@@ -140,14 +140,14 @@ Two passes — count every signature, then label those reaching
 
 ---
 
-## 5b. Similarity engine (`src/phonology.py`, `src/similarity.py`) <a name="similarity"></a>
+## 5b. Similarity engine (`rhymemap/phonology.py`, `rhymemap/similarity.py`) <a name="similarity"></a>
 
 The exact engine asks *"are these two signature strings equal?"*. Rhyme is not an
 equality relation: "bit"/"beat" nearly rhyme, "bit"/"bought" do not, and exact
 matching cannot express the difference. The similarity engine replaces the
 string comparison with a score in [0, 1].
 
-### `src/phonology.py` — the feature space
+### `rhymemap/phonology.py` — the feature space
 
 - **Vowels** are placed by height, backness, rounding, tenseness, the target of
   any offglide, and r-colouring. `vowel_distance` is their weighted distance.
@@ -164,7 +164,7 @@ Without that step the weighted averages never approached 1.0, the usable range
 was compressed into roughly [0, 0.64], and unrelated pairs such as "cat"/"dog"
 outscored genuine near-rhymes.
 
-### `src/similarity.py` — scoring and grouping
+### `rhymemap/similarity.py` — scoring and grouping
 
 ```
 score = (w_nucleus·nucleus_sim + w_coda·coda_sim + w_stress·stress_sim) / Σw
@@ -196,7 +196,7 @@ chains two unrelated rhyme families into a single group. The matrix is built
 over *distinct* rhyme keys rather than syllable instances, since a dense verse
 repeats sounds heavily.
 
-### `src/labeling.py` — engine selection
+### `rhymemap/labeling.py` — engine selection
 
 Every CLI takes `--engine {exact, families, similarity}` and dispatches through
 `label_verse`. `exact` is the v1 baseline, preserved so the evaluation in
@@ -216,7 +216,7 @@ against a hand-annotated gold set.
 
 ---
 
-## 5c. Chain detection (`src/chains.py`) <a name="chains"></a>
+## 5c. Chain detection (`rhymemap/chains.py`) <a name="chains"></a>
 
 Per-syllable labelling cannot represent the structure a listener actually hears.
 In
@@ -224,7 +224,7 @@ In
     levitatin' / devastatin' / demonstratin'
 
 every syllable gets assigned to whichever group its own sound falls in, and the
-four-syllable repeat is never represented. `src/chains.py` looks for repeated
+four-syllable repeat is never represented. `rhymemap/chains.py` looks for repeated
 *spans* instead.
 
 ### Method
@@ -290,7 +290,7 @@ occurrences of a one-syllable chain as a run, which `chain_metrics` does not.
 
 ---
 
-## 5d. Audio sync (`src/timing.py`, `scripts/align_audio.py`) <a name="timing"></a>
+## 5d. Audio sync (`rhymemap/timing.py`, `scripts/align_audio.py`) <a name="timing"></a>
 
 `notes.md` has asked for this since March: attach a time to each word so the
 rhymes light up along with the track.
@@ -298,9 +298,9 @@ rhymes light up along with the track.
 Forced alignment is **not** a dependency. Every aligner is heavy — WhisperX pulls
 in torch, aeneas needs espeak and ffmpeg — so `scripts/align_audio.py` uses
 whichever happens to be installed and prints the options when neither is.
-Nothing under `src/` imports them, and `make install` is unchanged.
+Nothing under `rhymemap/` imports them, and `make install` is unchanged.
 
-`src/timing.py` reads what those tools emit:
+`rhymemap/timing.py` reads what those tools emit:
 
 | Format | Shape |
 |---|---|
@@ -335,7 +335,7 @@ syllables each time is wasteful enough to show up on a phone.
 
 ---
 
-## 5e. Naming rhyme groups (`src/naming.py`) <a name="naming"></a>
+## 5e. Naming rhyme groups (`rhymemap/naming.py`) <a name="naming"></a>
 
 Groups were labelled `A`, `B`, … `Z`, `AA`, `AB`, in order of first appearance.
 That is a spreadsheet column, not a name, and it fails three ways:
@@ -405,7 +405,7 @@ what a rhyme scheme *is*.
 
 ---
 
-## 6. Metrics (`src/metrics.py`) <a name="metrics"></a>
+## 6. Metrics (`rhymemap/metrics.py`) <a name="metrics"></a>
 
 | Metric | Definition |
 |---|---|
@@ -423,7 +423,7 @@ what a rhyme scheme *is*.
 
 ---
 
-## 7. Visualisation (`src/visual.py`) <a name="visual"></a>
+## 7. Visualisation (`rhymemap/visual.py`) <a name="visual"></a>
 
 `VisualEngine.display(verse, legend=False)` prints the verse with each labelled
 syllable on a coloured background, and optionally lists the groups by size.
@@ -433,7 +433,7 @@ Escape codes are suppressed when `NO_COLOR` is set or stdout is not a TTY.
 
 ## 8. Batch analysis <a name="batch"></a>
 
-`src/analyzer.py` owns the corpus pipeline; `scripts/generate_stats.py` is a thin
+`rhymemap/analyzer.py` owns the corpus pipeline; `scripts/generate_stats.py` is a thin
 CLI over it. Previously each file carried its own copy of the loop with divergent
 metric definitions.
 
@@ -464,7 +464,7 @@ similarity heatmap for each featured artist present in the data.
 
 ---
 
-## 10. Caching (`src/cache.py`) <a name="caching"></a>
+## 10. Caching (`rhymemap/cache.py`) <a name="caching"></a>
 
 Phoneme and syllable lookups are memoised in memory and in `.cache/*.json`.
 Bump `CACHE_VERSION` when the stored format or lookup semantics change. Disk I/O

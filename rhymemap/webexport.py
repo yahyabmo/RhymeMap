@@ -1,6 +1,6 @@
 """Export analysed verses to web/data.js for the browser viewer.
 
-    python -m export_for_web [--input CSV] [--limit N] [--engine ENGINE]
+    python -m rhymemap.webexport [--input CSV] [--limit N] [--engine ENGINE]
 
 The same serialisation is used by ``scripts/serve_web.py`` so that pasted lyrics
 and pre-exported verses reach the page in one shape.
@@ -13,13 +13,13 @@ import json
 import sys
 from pathlib import Path
 
-from src.analyzer import DEFAULT_DATASET, DatasetError, iter_verses
-from src.cache import flush_all
-from src.labeling import ENGINE_CHOICES, ENGINE_SIMILARITY, label_verse
-from src.metrics import compute_metrics
-from src.phonetics import process_verse
+from rhymemap.analyzer import DEFAULT_DATASET, DatasetError, iter_verses
+from rhymemap.cache import flush_all
+from rhymemap.labeling import ENGINE_CHOICES, ENGINE_SIMILARITY, label_verse
+from rhymemap.metrics import compute_metrics
+from rhymemap.phonetics import process_verse
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = PROJECT_ROOT / "web"
 
 
@@ -121,8 +121,8 @@ def label_and_name(verse, engine: str, min_occurrences: int, tail_window=None):
     left the other producing "F", "G", "J" instead of real names.
     """
     if engine == "chains":
-        from src.chains import assign_chain_labels
-        from src.naming import rename_groups
+        from rhymemap.chains import assign_chain_labels
+        from rhymemap.naming import rename_groups
 
         chains = assign_chain_labels(verse, min_occurrences=min_occurrences)
         verse.metadata["groups"] = rename_groups(verse, chains)
@@ -139,7 +139,7 @@ def analyse_text(lyrics: str, artist: str, track: str, engine: str = ENGINE_SIMI
     chains = label_and_name(verse, engine, min_occurrences, tail_window)
 
     if timings:
-        from src.timing import attach_timings, timing_coverage
+        from rhymemap.timing import attach_timings, timing_coverage
 
         matched = attach_timings(verse, timings)
         print(f"  timings: matched {matched} words ({timing_coverage(verse):.0%} of the verse)")
@@ -149,12 +149,12 @@ def analyse_text(lyrics: str, artist: str, track: str, engine: str = ENGINE_SIMI
 
 def analyse_song(song, engine: str = ENGINE_SIMILARITY, min_occurrences: int = 2,
                  tail_window=None) -> dict:
-    """Analyse a Song from src.sources, keeping its provenance in the payload."""
+    """Analyse a Song from rhymemap.sources, keeping its provenance in the payload."""
     verse = process_verse(song.lyrics, artist=song.artist)
     chains = label_and_name(verse, engine, min_occurrences, tail_window)
 
     if song.timings:
-        from src.timing import attach_timings
+        from rhymemap.timing import attach_timings
 
         attach_timings(verse, song.timings)
 
@@ -190,7 +190,7 @@ def main(argv=None) -> int:
 
     timings = None
     if args.timings:
-        from src.timing import TimingError, load_timings
+        from rhymemap.timing import TimingError, load_timings
 
         try:
             timings = load_timings(args.timings)

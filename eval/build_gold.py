@@ -113,7 +113,7 @@ DEMO_SEGMENTS = [
 
 
 def main() -> int:
-    from src.analyzer import iter_verses
+    from rhymemap.analyzer import iter_verses
 
     by_track = {track: (artist, lyrics) for track, artist, lyrics in iter_verses()}
     verses = []

@@ -35,7 +35,7 @@ RUN mkdir -p /artefacts/nltk_data /artefacts/cache \
     && python -m scripts.fetch_nltk_data \
     # Bake the bundled songs and warm the phonetic caches, so the first request
     # does not pay for a 4s model load or a corpus read.
-    && python -m export_for_web --demo
+    && python -m rhymemap.webexport --demo
 
 # ---------------------------------------------------------------- runtime ---
 FROM python:3.12-slim AS runtime
@@ -53,11 +53,10 @@ COPY requirements-server.txt .
 RUN pip install --no-cache-dir -r requirements-server.txt \
     && pip install --no-cache-dir --no-deps g2p_en
 
-COPY --from=builder /build/src ./src
+COPY --from=builder /build/rhymemap ./rhymemap
 COPY --from=builder /build/scripts ./scripts
 COPY --from=builder /build/web ./web
 COPY --from=builder /build/dataset ./dataset
-COPY --from=builder /build/export_for_web.py ./export_for_web.py
 COPY --from=builder /artefacts/nltk_data ./nltk_data
 COPY --from=builder /artefacts/cache ./.cache
 

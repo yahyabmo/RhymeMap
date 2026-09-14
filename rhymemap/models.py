@@ -35,7 +35,7 @@ class Syllable:
     word_id: int = 0
     syl_index: int = 0                         # Index of this syllable within its word
 
-    # Playback times in seconds, filled in by src.timing when an alignment is
+    # Playback times in seconds, filled in by rhymemap.timing when an alignment is
     # supplied. None everywhere when there is no audio.
     start: float | None = None
     end: float | None = None
@@ -68,7 +68,7 @@ class Word:
     word_id: int = 0
     is_last_word: bool = False
 
-    # Playback times in seconds; see src.timing.
+    # Playback times in seconds; see rhymemap.timing.
     start: float | None = None
     end: float | None = None
 

@@ -9,10 +9,10 @@ import argparse
 import sys
 from pathlib import Path
 
-from src.analyzer import DEFAULT_DATASET, DatasetError, analyze_dataset
-from src.cache import flush_all
-from src.labeling import ENGINE_CHOICES, ENGINE_HELP, ENGINE_SIMILARITY
-from src.metrics import CSV_COLUMNS
+from rhymemap.analyzer import DEFAULT_DATASET, DatasetError, analyze_dataset
+from rhymemap.cache import flush_all
+from rhymemap.labeling import ENGINE_CHOICES, ENGINE_HELP, ENGINE_SIMILARITY
+from rhymemap.metrics import CSV_COLUMNS
 
 
 def build_parser() -> argparse.ArgumentParser:

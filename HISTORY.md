@@ -72,7 +72,7 @@ audit found.
   any two adjacent *labelled* syllables as a multisyllabic rhyme.
 - **One definition per metric.** `generate_stats.py` and `analyzer.py` each
   computed a different formula under the name "Multi" and fed the same column.
-  `src/metrics.py` is now the single source; `diversity` is the separated name
+  `rhymemap/metrics.py` is now the single source; `diversity` is the separated name
   for the other formula.
 
 ### Things that did not run
@@ -109,15 +109,15 @@ audit found.
 ## v3.0 (2026-09-13) – Similarity engine, chains, evaluation, viewer, audio
 
 ### The engine is now a similarity metric, not a string comparison
-- `src/phonology.py` places every ARPAbet phoneme in an articulatory feature
+- `rhymemap/phonology.py` places every ARPAbet phoneme in an articulatory feature
   space: vowels by height, backness, rounding, tenseness, offglide and
   r-colouring; consonants by place, manner and voicing. Codas are compared by a
   Levenshtein alignment whose substitution cost is the feature distance between
   two consonants.
-- `src/similarity.py` scores a syllable pair in [0, 1] and clusters on it.
+- `rhymemap/similarity.py` scores a syllable pair in [0, 1] and clusters on it.
   An identical onset scales the score down: identical onset plus identical rime
   is repetition, not rhyme, and a rime-only score rates "cat"/"cat" a perfect 1.
-- `src/chains.py` finds repeated multisyllabic spans, so
+- `rhymemap/chains.py` finds repeated multisyllabic spans, so
   "levitatin' / devastatin' / ricochetin'" surfaces as one five-syllable chain
   instead of fifteen unrelated syllables.
 

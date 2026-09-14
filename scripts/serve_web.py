@@ -172,7 +172,7 @@ class Handler(SimpleHTTPRequestHandler):
             self._send_json({"error": f"invalid JSON: {exc}"}, 400)
             return
 
-        from src.labeling import ENGINE_CHOICES
+        from rhymemap.labeling import ENGINE_CHOICES
         engine = request.get("engine") or "similarity"
         if engine not in ENGINE_CHOICES:
             self._send_json({"error": f"unknown engine {engine!r}"}, 400)
@@ -188,7 +188,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         try:
-            from export_for_web import analyse_text
+            from rhymemap.webexport import analyse_text
 
             payload = analyse_text(
                 lyrics,
@@ -205,7 +205,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _handle_song(self, request, engine):
         """Load a song from a link (or raw lyrics) and analyse it."""
-        from src.sources import SourceError, load
+        from rhymemap.sources import SourceError, load
 
         query = (request.get("url") or request.get("query") or "").strip()
         if not query:
@@ -222,7 +222,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
 
         try:
-            from export_for_web import analyse_song
+            from rhymemap.webexport import analyse_song
 
             payload = analyse_song(song, engine=engine,
                                    min_occurrences=max(2, int(request.get("min_occurrences") or 2)))

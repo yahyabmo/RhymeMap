@@ -5,9 +5,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.labeling import label_verse
-from src.phonetics import process_verse
-from src.timing import (
+from rhymemap.labeling import label_verse
+from rhymemap.phonetics import process_verse
+from rhymemap.timing import (
     TimingError,
     WordTiming,
     attach_timings,
@@ -145,7 +145,7 @@ class TestAttachTimings(unittest.TestCase):
         self.assertTrue(all(s.start is None for s in self.verse.syllables()))
 
     def test_coverage_of_empty_verse(self):
-        from src.models import Verse
+        from rhymemap.models import Verse
         self.assertEqual(timing_coverage(Verse()), 0.0)
 
 

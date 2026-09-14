@@ -11,7 +11,7 @@ karaoke playback come from the same source and no forced alignment is needed.
 Audio is deliberately **not** downloaded. The viewer embeds YouTube's own player
 and drives the highlight from its clock, which keeps playback on the platform
 that is licensed to serve it, avoids shipping copyrighted audio, and costs no
-bandwidth or disk. `src.timing` still handles a local file for anyone working
+bandwidth or disk. `rhymemap.timing` still handles a local file for anyone working
 with audio they own.
 """
 

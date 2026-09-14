@@ -15,9 +15,9 @@ import argparse
 import json
 from pathlib import Path
 
-from src.labeling import label_verse
-from src.phonetics import process_verse
-from src.similarity import DEFAULT_WEIGHTS
+from rhymemap.labeling import label_verse
+from rhymemap.phonetics import process_verse
+from rhymemap.similarity import DEFAULT_WEIGHTS
 
 from .scoring import aggregate_pairwise, bcubed_score, groups_to_labels, mean_score, pairwise_counts, pairwise_score
 

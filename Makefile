@@ -41,10 +41,10 @@ plots:
 	$(PYTHON) -m analysis.run_all_plots
 
 demo:
-	$(PYTHON) -m src.main --legend
+	$(PYTHON) -m rhymemap.main --legend
 
 web-export:
-	$(PYTHON) -m export_for_web --input $(DATASET) --demo
+	$(PYTHON) -m rhymemap.webexport --input $(DATASET) --demo
 
 web: web-export
 	@echo "Opening web/index.html"
@@ -61,7 +61,7 @@ serve: web-export
 #   make karaoke AUDIO=track.mp3 TIMINGS=timings.json
 karaoke:
 	@test -n "$(TIMINGS)" || (echo "usage: make karaoke AUDIO=track.mp3 TIMINGS=timings.json" && exit 1)
-	$(PYTHON) -m export_for_web --input $(DATASET) --demo --timings $(TIMINGS) --audio $(AUDIO)
+	$(PYTHON) -m rhymemap.webexport --input $(DATASET) --demo --timings $(TIMINGS) --audio $(AUDIO)
 	$(PYTHON) -m scripts.serve_web
 
 # The read-only demo that GitHub Pages serves. Songs are analysed now and baked

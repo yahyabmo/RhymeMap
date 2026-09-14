@@ -26,7 +26,7 @@ make eval           # gold set, ablation table, artist-ID experiment
 Every entry point is a real CLI:
 
 ```bash
-python -m src.main --file my_lyrics.txt --artist "Nas" --legend
+python -m rhymemap.main --file my_lyrics.txt --artist "Nas" --legend
 python -m scripts.generate_stats --input dataset/my_corpus.csv --output data/mine.csv
 python -m analysis.run_all_plots --show
 ```
@@ -159,7 +159,7 @@ make karaoke AUDIO=track.mp3 TIMINGS=timings.json
 Forced alignment is deliberately **not** a dependency. Every aligner is heavy —
 WhisperX pulls in torch, aeneas needs espeak and ffmpeg — so `scripts/align_audio.py`
 uses whichever is installed and explains the options when neither is. Nothing in
-`src/` imports them. WebVTT, SRT and Audacity label tracks are read directly, so
+`rhymemap/` imports them. WebVTT, SRT and Audacity label tracks are read directly, so
 you can skip aligners entirely and label the words by hand.
 
 Without timings the player is hidden and everything else behaves identically.
@@ -224,7 +224,7 @@ Python 3.10+, plus the packages in `requirements.txt`.
 ## Layout
 
 ```
-src/        core: models, phonetics, engine, metrics, visual, main
+rhymemap/        core: models, phonetics, engine, metrics, visual, main
 scripts/    CLI entry points (stats generation, NLTK bootstrap)
 analysis/   figure generation
 tests/      unit tests

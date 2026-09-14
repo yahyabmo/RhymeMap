@@ -22,10 +22,10 @@ dependencies = [
 ]
 
 [project.scripts]
-rhymemap = "src.main:main"
+rhymemap = "rhymemap.main:main"
 
 [tool.setuptools]
-packages = ["src", "analysis", "scripts"]
+packages = ["rhymemap", "analysis", "scripts"]
 
 [tool.ruff]
 line-length = 120
@@ -42,4 +42,4 @@ ignore = [
 "tests/*" = ["E741"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["src", "analysis", "scripts"]
+known-first-party = ["rhymemap", "analysis", "scripts"]

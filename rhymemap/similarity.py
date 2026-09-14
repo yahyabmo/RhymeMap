@@ -2,7 +2,7 @@
 
 The v1 engine grouped syllables whose signature strings were identical. This
 module replaces that with a score in [0, 1] built from articulatory distances
-(``src/phonology.py``), and groups syllables by clustering that score instead of
+(``rhymemap/phonology.py``), and groups syllables by clustering that score instead of
 hashing a key.
 
 Three ideas do the work:

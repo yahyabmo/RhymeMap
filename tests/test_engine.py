@@ -6,7 +6,7 @@ found in the Phase 1 audit lived.
 
 import unittest
 
-from src.engine import (
+from rhymemap.engine import (
     CONSONANT_FAMILIES,
     RhymeRegistry,
     assign_rhyme_labels,
@@ -15,7 +15,7 @@ from src.engine import (
     get_syllable_signature,
     label_for_index,
 )
-from src.models import Line, Syllable, Verse, Word
+from rhymemap.models import Line, Syllable, Verse, Word
 
 
 def syl(nucleus="AE1", coda=(), onset=(), text="x", terminal=False):

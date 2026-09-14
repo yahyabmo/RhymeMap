@@ -2,7 +2,7 @@
 
 import unittest
 
-from src.phonology import (
+from rhymemap.phonology import (
     CONSONANTS,
     VOWELS,
     cluster_distance,

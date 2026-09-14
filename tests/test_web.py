@@ -13,10 +13,10 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-from export_for_web import analyse_text, verse_to_dict
+from rhymemap.engine import assign_rhyme_labels
+from rhymemap.phonetics import process_verse
+from rhymemap.webexport import analyse_text, verse_to_dict
 from scripts.serve_web import Handler
-from src.engine import assign_rhyme_labels
-from src.phonetics import process_verse
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = PROJECT_ROOT / "web"

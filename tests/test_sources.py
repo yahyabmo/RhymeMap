@@ -12,7 +12,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-from src.sources import (
+from rhymemap.sources import (
     Song,
     SourceError,
     explain_failure,
@@ -147,7 +147,7 @@ class TestFromText(unittest.TestCase):
 
 class TestFetchYoutube(unittest.TestCase):
     def fetch(self, url="https://www.youtube.com/watch?v=dQw4w9WgXcQ", **kwargs):
-        from src.sources import fetch_youtube
+        from rhymemap.sources import fetch_youtube
         with patch.dict(sys.modules, {"yt_dlp": fake_yt_dlp(**kwargs)}):
             return fetch_youtube(url)
 

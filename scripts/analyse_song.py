@@ -13,12 +13,12 @@ import argparse
 import sys
 from pathlib import Path
 
-from src.cache import flush_all
-from src.labeling import ENGINE_CHOICES, ENGINE_SIMILARITY, label_verse
-from src.metrics import compute_metrics
-from src.phonetics import process_verse
-from src.sources import SourceError, from_text, load
-from src.visual import VisualEngine
+from rhymemap.cache import flush_all
+from rhymemap.labeling import ENGINE_CHOICES, ENGINE_SIMILARITY, label_verse
+from rhymemap.metrics import compute_metrics
+from rhymemap.phonetics import process_verse
+from rhymemap.sources import SourceError, from_text, load
+from rhymemap.visual import VisualEngine
 
 
 def main(argv=None) -> int:
