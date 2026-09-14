@@ -23,7 +23,9 @@ import argparse
 import json
 import os
 import re
+import threading
 import webbrowser
+from collections import OrderedDict
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -31,6 +33,36 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_DIR = PROJECT_ROOT / "web"
 
 MAX_BODY_BYTES = 256 * 1024      # a very long verse is still only a few KB
+
+# Resolving a link costs a network round trip to YouTube, possibly another to a
+# lyrics database, and then the full phonetic analysis. Asking for the same song
+# twice - switching engines, reloading, a second person opening the same link -
+# should not pay that again. Bounded, because a long-running server should not
+# grow without limit.
+ANALYSIS_CACHE_SIZE = 24
+_analysis_cache: OrderedDict = OrderedDict()
+_cache_lock = threading.Lock()
+
+
+def cache_get(key):
+    with _cache_lock:
+        if key not in _analysis_cache:
+            return None
+        _analysis_cache.move_to_end(key)
+        return _analysis_cache[key]
+
+
+def cache_put(key, payload):
+    with _cache_lock:
+        _analysis_cache[key] = payload
+        _analysis_cache.move_to_end(key)
+        while len(_analysis_cache) > ANALYSIS_CACHE_SIZE:
+            _analysis_cache.popitem(last=False)
+
+
+def cache_clear():
+    with _cache_lock:
+        _analysis_cache.clear()
 
 
 _RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
@@ -205,16 +237,28 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _handle_song(self, request, engine):
         """Load a song from a link (or raw lyrics) and analyse it."""
-        from rhymemap.sources import SourceError, load
+        from rhymemap.sources import SourceError, load, parse_youtube_id
 
         query = (request.get("url") or request.get("query") or "").strip()
         if not query:
             self._send_json({"error": "no link or lyrics supplied"}, 400)
             return
 
+        minimum = max(2, int(request.get("min_occurrences") or 2))
+
+        video_id = parse_youtube_id(query)
+        key = (video_id, engine, minimum) if video_id else None
+        if key is not None:
+            cached = cache_get(key)
+            if cached is not None:
+                self._send_json(dict(cached, cached=True))
+                return
+
         try:
             song = load(query)
         except SourceError as exc:
+            # 422 rather than 500: the request was well-formed, the song was not
+            # findable. The message lists every source that was tried.
             self._send_json({"error": str(exc)}, 422)
             return
         except Exception as exc:
@@ -224,12 +268,13 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             from rhymemap.webexport import analyse_song
 
-            payload = analyse_song(song, engine=engine,
-                                   min_occurrences=max(2, int(request.get("min_occurrences") or 2)))
+            payload = analyse_song(song, engine=engine, min_occurrences=minimum)
         except Exception as exc:
             self._send_json({"error": f"analysis failed: {type(exc).__name__}: {exc}"}, 500)
             return
 
+        if key is not None:
+            cache_put(key, payload)
         self._send_json(payload)
 
 

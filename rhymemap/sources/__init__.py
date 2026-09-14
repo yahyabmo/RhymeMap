@@ -120,8 +120,7 @@ def _from_captions(reader: YouTubeReader, kind: str, languages) -> tuple[str, li
 def _from_lrclib(name: TrackName, duration: float, want_synced: bool,
                  fetcher=None) -> tuple[str, list[LyricLine], str]:
     """Look the song up. Returns (lyrics, timed lines, what matched)."""
-    kwargs = {"fetcher": fetcher} if fetcher is not None else {}
-    match = lrclib.lookup(name.track, name.artist, duration, **kwargs)
+    match = lrclib.lookup(name.track, name.artist, duration, fetcher=fetcher)
     if match is None:
         return "", [], ""
 

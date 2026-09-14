@@ -296,6 +296,21 @@ def probe_oembed(video_id: str, opener=None) -> dict:
     }
 
 
+def _import_yt_dlp():
+    """Import yt-dlp. A function so it can be substituted in tests.
+
+    The obvious alternative -- patching ``sys.modules["yt_dlp"]`` -- is a trap.
+    ``patch.dict`` restores by clearing the dict and refilling it, which evicts
+    every module imported inside the patched window. The analysis pipeline
+    imports numpy, scipy and g2p_en lazily, so the next request re-imports their
+    C extensions and dies with "cannot load module more than once per process".
+    One narrow seam avoids all of that.
+    """
+    import yt_dlp
+
+    return yt_dlp
+
+
 class YouTubeReader:
     """One extraction, reusable for the caption downloads that follow it.
 
@@ -315,7 +330,7 @@ class YouTubeReader:
     def open(self) -> dict:
         """Extract metadata, rotating player clients until one answers."""
         try:
-            import yt_dlp
+            yt_dlp = _import_yt_dlp()
         except ImportError as exc:
             raise SourceError(
                 "yt-dlp is needed to read YouTube.\n    pip install yt-dlp"

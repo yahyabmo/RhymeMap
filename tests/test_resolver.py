@@ -14,7 +14,6 @@ thing this project measures.
 from __future__ import annotations
 
 import json
-import sys
 import types
 import unittest
 from unittest.mock import patch
@@ -86,6 +85,11 @@ def fake_yt_dlp(info=None, raises=None, fail_times=0, seen=None):
     return types.SimpleNamespace(YoutubeDL=FakeYDL)
 
 
+def using(module):
+    """Substitute the yt-dlp import, without touching sys.modules."""
+    return patch("rhymemap.sources.youtube._import_yt_dlp", return_value=module)
+
+
 def lrclib_serving(body: str, log: list | None = None):
     def fetch(url: str) -> str:
         if log is not None:
@@ -101,7 +105,7 @@ def nothing_online(url: str) -> str:
 class ChainCase(unittest.TestCase):
     def resolve(self, info=None, lyrics_body="", **kwargs):
         module = fake_yt_dlp(info=info if info is not None else info_with(), **kwargs)
-        with patch.dict(sys.modules, {"yt_dlp": module}):
+        with using(module):
             return resolve(URL, fetcher=lrclib_serving(lyrics_body) if lyrics_body else nothing_online)
 
 
@@ -170,7 +174,7 @@ class TestBlockedExtraction(unittest.TestCase):
 
     def test_oembed_rescues_the_lookup(self):
         module = fake_yt_dlp(raises=RuntimeError("ERROR: Sign in to confirm you're not a bot"))
-        with patch.dict(sys.modules, {"yt_dlp": module}), \
+        with using(module), \
              patch("rhymemap.sources.probe_oembed",
                    return_value={"title": "Test Artist - Test Song", "uploader": "Test Channel"}):
             song = resolve(URL, fetcher=lrclib_serving(LRCLIB_SYNCED))
@@ -179,7 +183,7 @@ class TestBlockedExtraction(unittest.TestCase):
 
     def test_the_block_is_recorded_even_when_recovery_works(self):
         module = fake_yt_dlp(raises=RuntimeError("ERROR: Sign in to confirm you're not a bot"))
-        with patch.dict(sys.modules, {"yt_dlp": module}), \
+        with using(module), \
              patch("rhymemap.sources.probe_oembed",
                    return_value={"title": "Test Artist - Test Song", "uploader": "Test Channel"}):
             song = resolve(URL, fetcher=lrclib_serving(LRCLIB_SYNCED))
@@ -187,7 +191,7 @@ class TestBlockedExtraction(unittest.TestCase):
 
     def test_a_total_block_reports_the_youtube_reason(self):
         module = fake_yt_dlp(raises=RuntimeError("ERROR: Private video"))
-        with patch.dict(sys.modules, {"yt_dlp": module}), \
+        with using(module), \
              patch("rhymemap.sources.probe_oembed", return_value={}):
             with self.assertRaises(SourceError) as caught:
                 resolve(URL, fetcher=nothing_online)
@@ -206,7 +210,7 @@ class TestClientRotation(unittest.TestCase):
     def test_a_blocked_client_is_retried_with_the_next(self):
         seen: list = []
         module = fake_yt_dlp(info=info_with(automatic=True), fail_times=1, seen=seen)
-        with patch.dict(sys.modules, {"yt_dlp": module}), \
+        with using(module), \
              patch("rhymemap.sources.youtube.available_clients", return_value=self.KNOWN):
             song = resolve(URL, fetcher=nothing_online)
         self.assertTrue(song.lyrics.strip())
@@ -215,7 +219,7 @@ class TestClientRotation(unittest.TestCase):
     def test_rotation_gives_up_after_every_client(self):
         seen: list = []
         module = fake_yt_dlp(info=info_with(automatic=True), fail_times=99, seen=seen)
-        with patch.dict(sys.modules, {"yt_dlp": module}), \
+        with using(module), \
              patch("rhymemap.sources.youtube.available_clients", return_value=self.KNOWN), \
              patch("rhymemap.sources.probe_oembed", return_value={}):
             with self.assertRaises(SourceError):
@@ -225,7 +229,7 @@ class TestClientRotation(unittest.TestCase):
     def test_the_default_client_is_tried_first(self):
         seen: list = []
         module = fake_yt_dlp(info=info_with(automatic=True), seen=seen)
-        with patch.dict(sys.modules, {"yt_dlp": module}), \
+        with using(module), \
              patch("rhymemap.sources.youtube.available_clients", return_value=self.KNOWN):
             resolve(URL, fetcher=nothing_online)
         self.assertNotIn("extractor_args", seen[0])
@@ -282,7 +286,7 @@ class TestEndToEnd(unittest.TestCase):
         from rhymemap.webexport import analyse_song
 
         module = fake_yt_dlp(info=info)
-        with patch.dict(sys.modules, {"yt_dlp": module}):
+        with using(module):
             song = resolve(URL, fetcher=lrclib_serving(lyrics_body))
         return song, analyse_song(song, engine="similarity")
 

@@ -7,7 +7,6 @@ here against a stand-in for yt-dlp built from YouTube's real response shapes.
 """
 
 import json
-import sys
 import types
 import unittest
 from unittest.mock import patch
@@ -161,7 +160,7 @@ class TestFromText(unittest.TestCase):
 class TestFetchYoutube(unittest.TestCase):
     def fetch(self, url="https://www.youtube.com/watch?v=dQw4w9WgXcQ", **kwargs):
         from rhymemap.sources import resolve
-        with patch.dict(sys.modules, {"yt_dlp": fake_yt_dlp(**kwargs)}):
+        with patch("rhymemap.sources.youtube._import_yt_dlp", return_value=fake_yt_dlp(**kwargs)):
             return resolve(url, fetcher=no_lyrics_online)
 
     def test_builds_a_song(self):
@@ -247,7 +246,7 @@ class TestLoad(unittest.TestCase):
         self.assertEqual(load("cat in the hat\nbat on the mat").source, "text")
 
     def test_routes_a_link_to_youtube(self):
-        with patch.dict(sys.modules, {"yt_dlp": fake_yt_dlp()}):
+        with patch("rhymemap.sources.youtube._import_yt_dlp", return_value=fake_yt_dlp()):
             self.assertEqual(load("https://youtu.be/dQw4w9WgXcQ").source, "youtube")
 
     def test_age_restriction_hint_mentions_cookies(self):

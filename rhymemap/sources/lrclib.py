@@ -187,7 +187,7 @@ def best_match(records: list[Match], track: str, artist: str,
 
 
 def lookup(track: str, artist: str = "", duration: float = 0.0, album: str = "",
-           fetcher=fetch) -> Match | None:
+           fetcher=None) -> Match | None:
     """Find a song's lyrics. Exact endpoint first, then a search.
 
     ``/api/get`` matches on all four fields at once and is the cheapest hit when
@@ -200,6 +200,13 @@ def lookup(track: str, artist: str = "", duration: float = 0.0, album: str = "",
     if not track:
         return None
     artist = (artist or "").strip()
+
+    # Resolved here rather than as a default argument: a default binds the
+    # function object at import time, so `fetch` could never afterwards be
+    # replaced - not by a test, and not by anyone wanting to route it through a
+    # cache or a proxy of their own.
+    if fetcher is None:
+        fetcher = fetch
 
     if artist:
         exact = _parse_records(fetcher(build_get_url(track, artist, album, duration)))
