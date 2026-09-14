@@ -50,6 +50,10 @@
         <button class="btn btn-primary star-border" id="analyseBtn" type="submit">Analyse</button>
       </form>
 
+      <div class="analyse-progress" id="analyseProgress" hidden
+           role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+           aria-label="Analysis progress"><span></span></div>
+
       <p class="hero-hint">
         No link? <button type="button" id="pasteToggle">Paste lyrics instead</button>
         · <button type="button" id="demoBtn">Load the demo verse</button>
@@ -83,8 +87,8 @@
           <label class="field">
             <span>Engine</span>
             <select id="engineSelect">
-              <option value="similarity">similarity</option>
               <option value="chains">chains</option>
+              <option value="similarity">similarity</option>
               <option value="families">families</option>
               <option value="exact">exact (v1)</option>
             </select>
@@ -175,22 +179,35 @@
   <div id="tooltip" class="tooltip" hidden></div>
 
   <section class="author">
-    <article class="profile-card glass" id="profileCard">
-      <!-- Your photo: save it as web/me.jpg. Until it exists the card shows the
-           lettered disc instead, so nothing is ever broken. The name and the
-           line under it are the next two elements - edit them directly. -->
+    <!-- Photos: save them as web/me.jpg and web/sohayb.jpg. Until they exist each
+         card shows its initial instead, so nothing is ever broken. -->
+    <article class="profile-card glass" data-profile>
       <div class="profile-avatar-wrap">
         <span class="profile-initials" aria-hidden="true">Y</span>
-        <img class="profile-avatar" id="profileAvatar" src="me.jpg"
+        <img class="profile-avatar" data-avatar src="me.jpg"
              alt="" width="96" height="96" loading="lazy">
       </div>
-      <h2 class="profile-name" id="profileName">Yahya Bel Hajjam</h2>
-      <p class="profile-role" id="profileRole">Computer science student · built RhymeMapper</p>
+      <h2 class="profile-name">Yahya Bel Hajjam</h2>
+      <p class="profile-role">Computer science student · built RhymeMapper</p>
       <div class="profile-links">
         <a class="profile-link" href="https://github.com/yahyabmo/RhymeMap"
            target="_blank" rel="noopener">GitHub</a>
         <a class="profile-link" href="https://github.com/yahyabmo"
            target="_blank" rel="noopener">@yahyabmo</a>
+      </div>
+    </article>
+
+    <article class="profile-card glass" data-profile>
+      <div class="profile-avatar-wrap">
+        <span class="profile-initials" aria-hidden="true">S</span>
+        <img class="profile-avatar" data-avatar src="sohayb.jpg"
+             alt="" width="96" height="96" loading="lazy">
+      </div>
+      <h2 class="profile-name">Sohayb El Yaktini</h2>
+      <p class="profile-role">Computer science student · built RhymeMapper</p>
+      <div class="profile-links">
+        <a class="profile-link" href="https://github.com/yahyabmo/RhymeMap"
+           target="_blank" rel="noopener">GitHub</a>
       </div>
     </article>
   </section>

@@ -258,6 +258,10 @@ class Handler(SimpleHTTPRequestHandler):
 
         minimum = max(2, int(request.get("min_occurrences") or 2))
 
+        if request.get("stream"):
+            self._stream_song(query, engine, minimum)
+            return
+
         video_id = parse_youtube_id(query)
         key = (video_id, engine, minimum) if video_id else None
         if key is not None:
@@ -288,6 +292,78 @@ class Handler(SimpleHTTPRequestHandler):
         if key is not None:
             cache_put(key, payload)
         self._send_json(payload)
+
+
+    def _stream_song(self, query, engine, minimum):
+        """Resolve and analyse, reporting progress as it goes.
+
+        Newline-delimited JSON, one object per event, ending with the payload.
+        Chosen over server-sent events because the client only reads forwards
+        and never reconnects, which is all SSE would have added.
+
+        Every number here is work actually completed. Resolving a link is a
+        network round trip whose duration cannot be known, so it moves the bar
+        only when a step finishes; the analysis is measured per line, which is
+        where the time actually goes.
+        """
+        from rhymemap.sources import SourceError, load, parse_youtube_id
+        from rhymemap.webexport import analyse_song
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Accel-Buffering", "no")   # tells a proxy not to hold it
+        self.end_headers()
+
+        def emit(event) -> bool:
+            try:
+                self.wfile.write((json.dumps(event) + "\n").encode("utf-8"))
+                self.wfile.flush()
+                return True
+            except (BrokenPipeError, ConnectionResetError):
+                return False        # the tab was closed; stop working
+
+        video_id = parse_youtube_id(query)
+        key = (video_id, engine, minimum) if video_id else None
+        if key is not None:
+            cached = cache_get(key)
+            if cached is not None:
+                emit({"stage": "cached", "progress": 1.0})
+                emit({"done": True, "payload": dict(cached, cached=True)})
+                return
+
+        emit({"stage": "reading the link" if video_id else "reading the lyrics",
+              "progress": 0.02})
+
+        try:
+            song = load(query)
+        except SourceError as exc:
+            emit({"error": str(exc)})
+            return
+        except Exception as exc:
+            emit({"error": f"{type(exc).__name__}: {exc}"})
+            return
+
+        found = f"{song.artist} - {song.title}" if song.artist else song.title
+        emit({"stage": f"found {found}", "progress": 0.12, "provider": song.provider})
+
+        alive = [True]
+
+        def on_progress(fraction, stage):
+            # The analysis owns 12% to 100%.
+            if alive[0]:
+                alive[0] = emit({"stage": stage, "progress": 0.12 + fraction * 0.88})
+
+        try:
+            payload = analyse_song(song, engine=engine, min_occurrences=minimum,
+                                   on_progress=on_progress)
+        except Exception as exc:
+            emit({"error": f"analysis failed: {type(exc).__name__}: {exc}"})
+            return
+
+        if key is not None:
+            cache_put(key, payload)
+        emit({"done": True, "payload": payload})
 
 
 def main(argv=None) -> int:

@@ -13,6 +13,7 @@ const verses = typeof rhymeData !== 'undefined' ? rhymeData.slice() : [];
 const el = (id) => document.getElementById(id);
 const ui = {
   threads: el('threads'), grain: el('grain'), waves: el('waves'), progress: el('progress'),
+  progressBar: el('analyseProgress'),
   rotatingWord: el('rotatingWord'), heroLede: el('heroLede'),
   form: el('linkForm'), input: el('linkInput'), analyse: el('analyseBtn'),
   status: el('status'), pasteToggle: el('pasteToggle'), pastePanel: el('pastePanel'),
@@ -26,13 +27,11 @@ const ui = {
   heroTitle: el('heroTitle'), heroParticles: el('heroParticles'),
   transport: el('transport'), seek: el('seek'), playToggle: el('playToggle'),
   playIcon: el('playIcon'), clock: el('clock'), playerNote: el('playerNote'),
-  profileCard: el('profileCard'),
-  profileAvatar: el('profileAvatar'), profileName: el('profileName'),
 };
 
 let current = null;
 let isolated = null;
-let threadsHandle = null;
+let backdrop = null;
 let wavesHandle = null;
 let trackCard = null;
 let stopStatusAnimation = null;
@@ -284,9 +283,9 @@ function paintAmbience(verse) {
   const strongest = (verse.groups || [])[0];
   const hue = strongest ? hueFor(strongest.label) : null;
 
-  if (threadsHandle) {
-    threadsHandle.setEnergy(0.22 + density * 0.6);
-    if (hue !== null) threadsHandle.setHue(hue);
+  if (backdrop) {
+    backdrop.setEnergy(0.22 + density * 0.6);
+    if (hue !== null) backdrop.setHue(hue * 0.35);
   }
   if (wavesHandle) {
     wavesHandle.setLevel(0.14 + density * 0.5);
@@ -639,7 +638,7 @@ function seek(items, time) {
 function reactTo(label) {
   if (label) {
     const hue = hueFor(label);
-    if (threadsHandle) threadsHandle.setHue(hue);
+    if (backdrop) backdrop.setHue(hue * 0.4);
     if (wavesHandle) { wavesHandle.setHue(hue); wavesHandle.setLevel(0.72); }
   } else if (wavesHandle) {
     wavesHandle.setLevel(0.22);
@@ -716,19 +715,83 @@ function addVerse(payload) {
   document.getElementById('analysis').scrollIntoView({ block: 'start' });
 }
 
+/* Read a newline-delimited JSON stream, handing each event to `onEvent`.
+ *
+ * The server reports what it has finished rather than how long it has been
+ * going, so the percentage this drives is measured work: the resolve step moves
+ * it when a step completes, and the analysis moves it per line, which is where
+ * the time actually goes. */
+async function postStream(path, body, onEvent) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, stream: true }),
+  });
+  if (!response.ok || !response.body) {
+    // No stream available: fall back to the plain request, which still works.
+    return post(path, body);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result = null;
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // A chunk can split a line in half; keep the remainder for the next one.
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let event;
+      try { event = JSON.parse(line); } catch (_) { continue; }
+      if (event.error) throw new Error(event.error);
+      if (event.done) { result = event.payload; continue; }
+      onEvent(event);
+    }
+  }
+
+  if (!result) throw new Error('The analysis ended without returning anything.');
+  return result;
+}
+
+function setProgress(fraction, stage) {
+  const percent = Math.round(Math.min(1, Math.max(0, fraction)) * 100);
+  ui.progressBar.hidden = false;
+  ui.progressBar.style.setProperty('--done', String(fraction));
+  ui.progressBar.setAttribute('aria-valuenow', String(percent));
+  // Plain text, not scrambled: a number people are watching should be readable.
+  if (stopStatusAnimation) { stopStatusAnimation(); stopStatusAnimation = null; }
+  ui.status.className = 'status working';
+  ui.status.textContent = `${percent}% · ${stage}`;
+}
+
+function clearProgress() {
+  ui.progressBar.hidden = true;
+  ui.progressBar.style.setProperty('--done', '0');
+}
+
 async function analyseLink(query) {
   if (!query.trim()) { setStatus('Paste a link first.', 'error'); return; }
   if (!requireServer()) return;
 
   ui.analyse.disabled = true;
-  setStatus('Reading captions…', 'working');
+  setProgress(0, 'starting');
   try {
-    const payload = await post('/api/song', { url: query.trim(), engine: ui.engineSelect.value });
+    const payload = await postStream(
+      '/api/song',
+      { url: query.trim(), engine: ui.engineSelect.value },
+      (event) => setProgress(event.progress ?? 0, event.stage || 'working'));
     addVerse(payload);
     setStatus(`${payload.artist} — ${payload.track}: ${payload.metrics.syllables} syllables, ${payload.metrics.signatures} rhyme groups.`);
   } catch (error) {
     setStatus(String(error.message || error), 'error');
   } finally {
+    clearProgress();
     ui.analyse.disabled = false;
   }
 }
@@ -807,13 +870,11 @@ function init() {
 
   decorate('waves', () => { wavesHandle = Effects.waves(ui.waves); });
 
-  // One background: the woven threads, on the GPU. Where there is no GPU to run
-  // them on - no WebGL2, or a software renderer that would run the shader on the
-  // CPU - the aurora takes over. It is the cheap 2D field this page used before
-  // and it holds 60fps in exactly the conditions the shader does not.
+  // The aurora: drifting spectral light on a 2D canvas, hue taken from the rhyme
+  // group under the playhead. The WebGL weave that briefly replaced it needed a
+  // GPU to be worth having and looked worse than this when it did not get one.
   decorate('background', () => {
-    threadsHandle = Effects.webThreads(ui.threads);
-    if (!threadsHandle || !threadsHandle.supported) threadsHandle = Effects.aurora(ui.threads);
+    backdrop = Effects.aurora(ui.threads);
     Effects.noise(ui.grain);
   });
 
@@ -831,15 +892,16 @@ function init() {
 
   decorate('borderGlow', () =>
     document.querySelectorAll('.panel').forEach((panel) => Effects.borderGlow(panel)));
-  decorate('profileCard', () => {
-    if (!ui.profileCard) return;
-    Effects.tilt(ui.profileCard, 8);
-    Effects.glare(ui.profileCard);
+  decorate('profileCards', () => {
+    document.querySelectorAll('[data-profile]').forEach((card) => {
+      Effects.tilt(card, 8);
+      Effects.glare(card);
+    });
   });
-  if (ui.profileAvatar) {
-    // Fall back to the initial rather than a broken-image icon.
-    ui.profileAvatar.addEventListener('error', () => { ui.profileAvatar.hidden = true; });
-  }
+  // Fall back to the initial rather than a broken-image icon.
+  document.querySelectorAll('.profile-avatar').forEach((img) => {
+    img.addEventListener('error', () => { img.hidden = true; });
+  });
   decorate('clickSpark', () => Effects.clickSpark(document.body));
   decorate('magnet', () => Effects.magnet(ui.analyse));
   decorate('scrollProgress', () => Effects.scrollProgress(ui.progress));

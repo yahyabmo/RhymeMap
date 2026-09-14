@@ -49,7 +49,7 @@ demo:
 	$(PYTHON) -m rhymemap.main --legend
 
 web-export:
-	$(PYTHON) -m rhymemap.webexport --input $(DATASET) --demo
+	$(PYTHON) -m rhymemap.webexport --input $(DATASET) --demo --engine chains
 
 web: web-export
 	@echo "Opening web/index.html"

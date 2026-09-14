@@ -1113,7 +1113,15 @@ footer a { color: var(--ink-2); }
 
 /* ---------------------------------------------------------- ProfileCard */
 
-.author { display: grid; place-items: center; padding: var(--gap-3xl) var(--gap-md); }
+/* Two cards side by side, stacking when there is no room for two. */
+.author {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: var(--gap-lg);
+  padding: var(--gap-3xl) var(--gap-md);
+}
 
 .profile-card {
   position: relative;
@@ -1208,3 +1216,34 @@ footer a { color: var(--ink-2); }
   transition: opacity var(--t-fast) var(--ease-out);
 }
 .lyrics.seekable .line:hover::before { opacity: .85; }
+
+/* ------------------------------------------------------ analysis progress -- */
+/* Driven by measured work: the resolve step moves it when a step completes,
+   the analysis moves it per line. Nothing here is on a timer. */
+
+.analyse-progress {
+  --done: 0;
+  width: min(440px, 100%);
+  height: 3px;
+  margin: var(--gap) auto 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.analyse-progress[hidden] { display: none; }
+
+.analyse-progress > span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform: scaleX(var(--done));
+  transform-origin: left center;
+  background: var(--accent-gradient);
+  /* Eased, but never ahead of the number: it only ever animates towards a
+     value the server has already reported. */
+  transition: transform 240ms var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analyse-progress > span { transition: none; }
+}

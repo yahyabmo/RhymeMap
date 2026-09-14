@@ -349,14 +349,23 @@ def process_line(line_text: str, line_id: int) -> Line:
     return line_obj
 
 
-def process_verse(raw_text: str, artist: str = "Unknown", verse_id: int = 0) -> Verse:
-    """Entry point: raw lyrics -> Verse. Blank lines are skipped."""
+def process_verse(raw_text: str, artist: str = "Unknown", verse_id: int = 0,
+                  on_line=None) -> Verse:
+    """Entry point: raw lyrics -> Verse. Blank lines are skipped.
+
+    ``on_line(done, total)`` is called after each line when supplied. This is
+    the only part of the pipeline long enough to be worth reporting: phoneme
+    lookup and syllabification dominate the cost of an analysis, and they happen
+    one line at a time. Counting lines is therefore a real measure of progress
+    rather than a timer pretending to be one.
+    """
     verse_obj = Verse(metadata={"artist": artist}, verse_id=verse_id)
-    line_id = 0
-    for line_text in raw_text.strip().split("\n"):
-        line_text = line_text.strip()
-        if not line_text:
-            continue
+    lines = [line.strip() for line in raw_text.strip().split("\n")]
+    lines = [line for line in lines if line]
+    total = len(lines)
+
+    for line_id, line_text in enumerate(lines):
         verse_obj.lines.append(process_line(line_text, line_id))
-        line_id += 1
+        if on_line is not None:
+            on_line(line_id + 1, total)
     return verse_obj

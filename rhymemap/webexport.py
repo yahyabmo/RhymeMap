@@ -161,10 +161,26 @@ def analyse_text(lyrics: str, artist: str, track: str, engine: str = ENGINE_SIMI
 
 
 def analyse_song(song, engine: str = ENGINE_SIMILARITY, min_occurrences: int = 2,
-                 tail_window=None) -> dict:
-    """Analyse a Song from rhymemap.sources, keeping its provenance in the payload."""
-    verse = process_verse(song.lyrics, artist=song.artist)
+                 tail_window=None, on_progress=None) -> dict:
+    """Analyse a Song from rhymemap.sources, keeping its provenance in the payload.
+
+    ``on_progress(fraction, stage)`` is called as the work proceeds. The fraction
+    is measured, not timed: phoneme lookup and syllabification are the expensive
+    part and happen one line at a time, so lines completed is a real measure of
+    how much of the analysis is done.
+    """
+    def report(fraction, stage):
+        if on_progress is not None:
+            on_progress(fraction, stage)
+
+    # Lines carry the analysis; labelling and serialising are the short tail.
+    verse = process_verse(
+        song.lyrics, artist=song.artist,
+        on_line=lambda done, total: report(done / max(total, 1) * 0.85, "sounding out the words"),
+    )
+    report(0.88, "grouping the rhymes")
     chains = label_and_name(verse, engine, min_occurrences, tail_window)
+    report(0.97, "naming the groups")
 
     if song.timings:
         from rhymemap.timing import attach_timings

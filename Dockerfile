@@ -35,7 +35,7 @@ RUN mkdir -p /artefacts/nltk_data /artefacts/cache \
     && python -m scripts.fetch_nltk_data \
     # Bake the bundled songs and warm the phonetic caches, so the first request
     # does not pay for a 4s model load or a corpus read.
-    && python -m rhymemap.webexport --demo
+    && python -m rhymemap.webexport --demo --engine chains
 
 # ---------------------------------------------------------------- runtime ---
 FROM python:3.12-slim AS runtime

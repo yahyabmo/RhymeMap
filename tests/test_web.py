@@ -135,8 +135,8 @@ class TestStaticFiles(unittest.TestCase):
                            "threads", "grain", "status", "player",
                            # transport
                            "transport", "seek", "playToggle", "playIcon", "clock",
-                           # effects
-                           "heroParticles", "trackCard", "profileCard"):
+                           # effects and progress
+                           "heroParticles", "trackCard", "analyseProgress"):
             self.assertIn(f'id="{element_id}"', html)
 
     def test_effects_used_by_the_app_are_exported(self):
