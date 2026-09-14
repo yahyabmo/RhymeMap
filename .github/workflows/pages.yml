@@ -56,16 +56,27 @@ jobs:
           test -f site/.nojekyll  || { echo ".nojekyll missing: Pages would skip _-prefixed files"; exit 1; }
           python - <<'PY'
           import pathlib, re
+          from scripts.build_static import OPTIONAL_ASSETS
+
           page = pathlib.Path("site/index.html").read_text(encoding="utf-8")
-          checked = 0
+          checked, skipped = 0, []
           for asset in re.findall(r'(?:src|href)="([^"]+)"', page):
               if asset.startswith(("http://", "https://", "//", "#", "data:", "mailto:")):
                   continue
-              target = pathlib.Path("site") / asset.split("?")[0].lstrip("/")
-              assert target.exists(), f"{asset} is referenced by index.html but was not built"
+              name = asset.split("?")[0].lstrip("/")
+              # The author photo is supplied by whoever runs the project, so the
+              # page references it whether or not it exists; the card falls back
+              # to a lettered disc. Referencing it must not fail the build.
+              if name in OPTIONAL_ASSETS:
+                  skipped.append(name)
+                  continue
+              assert (pathlib.Path("site") / name).exists(), \
+                  f"{asset} is referenced by index.html but was not built"
               checked += 1
           assert checked, "no local assets found: the check is not looking at the right page"
-          print(f"every referenced asset is present ({checked} checked)")
+          print(f"every required asset is present ({checked} checked)")
+          if skipped:
+              print(f"optional, absent: {', '.join(skipped)}")
           PY
 
       - uses: actions/upload-pages-artifact@v3
