@@ -9,6 +9,7 @@
 5c. [Chain detection](#chains)
 5d. [Audio sync](#timing)
 5e. [Naming rhyme groups](#naming)
+5f. [Song resolution](#sources)
 6. [Metrics](#metrics)
 7. [Visualisation](#visual)
 8. [Batch analysis](#batch)
@@ -30,24 +31,48 @@ the result as coloured text, metrics, and figures.
 
 ## 2. Structure <a name="structure"></a>
 
+`rhymemap/` is the distributed package. `scripts/` and `analysis/` are
+repository tooling: importable from a clone, deliberately not installed, because
+two more generic top-level names in site-packages is the collision the `src/` →
+`rhymemap/` rename existed to remove.
+
 ```
-rhymemap/
+rhymemap/                   the library (the only thing pip installs)
   models.py      dataclasses (Syllable, Nucleus, Word, Line, Verse)
   cache.py       two-tier persistent memoisation
   phonetics.py   cleaning, phoneme lookup, syllabification
-  engine.py      signatures and label assignment
+  phonology.py   articulatory feature tables and distances
+  similarity.py  syllable scoring and clustering
+  chains.py      multisyllabic span detection
+  engine.py      v1 signatures and label assignment
+  labeling.py    engine registry and selection
+  naming.py      names a rhyme group after its own rime
   metrics.py     the single definition of every metric
+  timing.py      word timings, attached to a verse
+  captions.py    caption parsing, rolling-cue dedup, line recovery
+  sources/       turning a link into lyrics (see 5f)
+    __init__.py  Song, and the resolver chain
+    youtube.py   yt-dlp extraction, client rotation, oEmbed fallback
+    lrclib.py    the LRCLIB lyrics database
+    lrc.py       the LRC synced-lyrics format
+    titles.py    "Artist - Track (Official Video)" -> artist, track
   visual.py      ANSI colour rendering
   analyzer.py    the corpus pipeline
+  webexport.py   verse -> viewer payload
   main.py        demo CLI
-scripts/
+scripts/                    repository tooling, not distributed
+  serve_web.py         the viewer with a live analysis endpoint
+  build_static.py      the read-only site for GitHub Pages
+  analyse_song.py      analyse one link from the terminal
   generate_stats.py    corpus -> data/stats.csv
+  align_audio.py       optional forced alignment
   fetch_nltk_data.py   downloads the NLTK corpora g2p_en needs
-analysis/
+analysis/                   figures, not distributed
   config.py      paths, palette, headless backend selection
   data_loader.py stats loading and per-artist means
   plots.py       figure functions
   run_all_plots.py  generates every figure
+eval/            gold set, ablation, artist-ID experiment
 tests/           unit tests
 dataset/         input corpora + the demo verse
 data/            generated stats.csv and figures
@@ -405,6 +430,100 @@ what a rhyme scheme *is*.
 
 ---
 
+## 5f. Song resolution (`rhymemap/sources/`) <a name="sources"></a>
+
+Turning a YouTube link into lyrics the analyser can read.
+
+### Why it is a chain and not a fetch
+
+The first version read captions and stopped. That is correct when captions
+exist and useless when they do not — and captioning a music video is optional,
+so most do not have them. The feature appeared to break at random: identical
+code, identical kind of link, "no captions, so there are no lyrics to read".
+
+Four sources are tried in descending order of **trust**, not convenience:
+
+| | provider | text from | timing |
+|---|---|---|---|
+| 1 | `captions` (manual) | a person | per word |
+| 2 | `lrclib-synced` | a person | per line |
+| 3 | `captions` (automatic) | a machine | per word |
+| 4 | `lrclib-plain` | a person | none |
+
+The one non-obvious placement is 2 above 3. Automatic captions carry *finer*
+timing, so ordering by timing quality would put them second. They are ordered
+below because ASR of singing mishears rhyme endings specifically — the vowel and
+coda at the end of a line, which is exactly the signal this project measures.
+Better text with coarser timing beats worse text with finer timing.
+
+### Line timing is never converted to word timing
+
+`Song.sync` is `"word"`, `"line"` or `"none"`, and a line-timed song keeps its
+`LyricLine`s all the way to the viewer, which highlights whole lines.
+
+Dividing a line's span across its words by syllable count would look plausible
+and would render identically to measured data. It would be fabricated. The rule
+is that the page never displays a precision the source does not have.
+
+### `titles.py`
+
+`"Eminem - Rap God (Explicit) [Official Video] (4K)"` → artist `Eminem`, track
+`Rap God`.
+
+This is the component most likely to fail silently. A malformed query does not
+error, it simply matches nothing — so a parsing bug is indistinguishable from a
+song genuinely absent from every database.
+
+- A bracketed group is dropped only when **every** word in it is packaging, so
+  `(Remix)`, `(Interlude)` and `(Album Version)` survive.
+- A trailing dash-separated segment is dropped when it is packaging
+  (`"Lose Yourself - Official Video"`), except when only two segments remain and
+  the last could be a real name — `"Joey Bada$$ - 1999"` keeps its title.
+- Channel suffixes are stripped only with a separator before them. `VEVO` is the
+  exception: it is a brand, always upper-case and always glued on. Without that
+  distinction `"NFrealmusic"` became `"NFreal"`.
+- yt-dlp's own `track`/`artist` fields win when present; they are metadata from a
+  matched release, not a guess.
+
+### `youtube.py`
+
+Two behaviours exist because of how YouTube acts rather than what it documents.
+
+**Client rotation.** YouTube serves different payloads to its Android app, its
+TV interface and its website, and blocks them independently. A refusal for one
+client is often served for another, so extraction is retried across clients. The
+list is intersected with the clients the installed yt-dlp actually knows, so a
+version bump cannot make this pass a name yt-dlp rejects; if the list cannot be
+read at all it falls back to yt-dlp's own default rather than failing.
+
+**oEmbed fallback.** When extraction is refused outright, YouTube's public oEmbed
+endpoint still returns the title and channel. That is all a lyrics database
+needs, so a hard block degrades to a lyrics-only result instead of an error.
+
+Cookies (`RHYMEMAP_COOKIES_FROM_BROWSER`, `RHYMEMAP_COOKIES`) are the documented
+fix for "Sign in to confirm you're not a bot". They are never read by default:
+reaching into a browser's cookie store is the user's decision.
+
+### Testing something that cannot be reached
+
+Every network call sits behind one substitutable function — `_import_yt_dlp()`
+and `lrclib.fetch` — and everything else is pure. The whole chain is exercised
+against recorded payloads: ordering, oEmbed recovery, client rotation, and a
+resolver → analyser → payload run asserting the line timings align one-to-one
+with the rendered lines.
+
+Two notes for anyone extending this:
+
+- Do **not** fake yt-dlp with `patch.dict(sys.modules, ...)`. It restores by
+  clearing the dict and refilling it, which evicts everything imported inside
+  the window; the analysis imports numpy, scipy and g2p_en lazily, so the next
+  request dies with "cannot load module more than once per process".
+- Do **not** give a network function a default of `fetcher=fetch`. A default
+  binds at import time and can never afterwards be replaced.
+
+---
+
+
 ## 6. Metrics (`rhymemap/metrics.py`) <a name="metrics"></a>
 
 | Metric | Definition |
@@ -499,9 +618,29 @@ import directory, so no test needs to patch `sys.path`.
 - `test_models.py` – dataclass behaviour
 - `test_phonetics.py` – cleaning, backoff, syllabification
 - `test_engine.py` – signatures, label space, candidate selection, labelling
+- `test_phonology.py` – feature tables and distances
+- `test_similarity.py` – syllable scoring, clustering, label assignment
+- `test_chains.py` – multisyllabic span detection
+- `test_naming.py` – how a group gets its name
 - `test_metrics.py` – metric definitions
+- `test_timing.py` – timing formats and attachment
+- `test_captions.py` – caption parsing, dedup, line recovery
+- `test_titles.py` – YouTube titles → artist and track
+- `test_lrc.py` – the LRC synced-lyrics format
+- `test_lrclib.py` – query building, candidate scoring, lookup order
+- `test_resolver.py` – the source chain, rotation, oEmbed, end to end
+- `test_sources.py` – URL shapes, caption selection, error messages
+- `test_server_cache.py` – the `/api/song` route and its cache
+- `test_web.py` – payload shape and the server's static handling
+- `test_layout.py` – the project's own paths and packaging
+- `test_eval.py` – scoring metrics
 
 Tests needing the neural fallback skip themselves when the corpora are absent.
+
+**Nothing in the suite touches the network.** Both network seams
+(`_import_yt_dlp`, `lrclib.fetch`) are substituted; a test that reached
+youtube.com or lrclib.net would be flaky in CI and would silently depend on a
+third party's uptime. See 5f for two patterns to avoid when adding more.
 
 ---
 

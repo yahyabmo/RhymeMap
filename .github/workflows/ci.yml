@@ -38,6 +38,13 @@ jobs:
       - name: Test
         run: ./run_tests.sh
 
+      - name: No test may touch the network
+        # The song loader is network-bound by nature; a test that quietly
+        # reached YouTube or lrclib.net would be flaky here and would pass
+        # locally for whoever wrote it.
+        if: matrix.python-version == '3.12'
+        run: python -m scripts.check_no_network
+
       - name: Smoke-test the pipeline
         run: |
           python -m scripts.generate_stats --quiet
