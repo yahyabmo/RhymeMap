@@ -27,6 +27,11 @@ WEB_DIR = PROJECT_ROOT / "web"
 # Copied verbatim into the build. data.js is generated, not copied.
 ASSETS = ("index.html", "style.css", "app.js", "effects.js")
 
+# Copied when present, not an error when absent. The author photo is the one
+# file a person is expected to drop in themselves; the card falls back to a
+# lettered disc without it, so a missing photo must not fail the build.
+OPTIONAL_ASSETS = ("me.jpg", "me.jpeg", "me.png", "me.webp")
+
 
 def build(output: Path, engine: str, dataset: str, min_occurrences: int,
           include_demo: bool = True) -> int:
@@ -41,6 +46,12 @@ def build(output: Path, engine: str, dataset: str, min_occurrences: int,
             print(f"error: missing {source}", file=sys.stderr)
             return 1
         shutil.copy2(source, output / name)
+
+    for name in OPTIONAL_ASSETS:
+        source = WEB_DIR / name
+        if source.exists():
+            shutil.copy2(source, output / name)
+            print(f"  including {name}")
 
     verses = []
 

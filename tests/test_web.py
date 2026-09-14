@@ -282,3 +282,34 @@ class TestServer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOptionalAssets(unittest.TestCase):
+    """The author photo is the one file a person adds themselves.
+
+    It must be copied into the published site when it exists, and its absence
+    must not fail the build -- the card falls back to a lettered disc, so a
+    missing photo is a normal state rather than an error.
+    """
+
+    def test_photo_names_are_recognised(self):
+        from scripts.build_static import OPTIONAL_ASSETS
+
+        self.assertIn("me.jpg", OPTIONAL_ASSETS)
+        for name in OPTIONAL_ASSETS:
+            with self.subTest(name=name):
+                self.assertTrue(name.startswith("me."))
+
+    def test_required_assets_do_not_include_the_photo(self):
+        """Otherwise a fresh clone with no photo could not build at all."""
+        from scripts.build_static import ASSETS, OPTIONAL_ASSETS
+
+        self.assertFalse(set(ASSETS) & set(OPTIONAL_ASSETS))
+
+    def test_the_card_points_at_a_local_file(self):
+        html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="profileAvatar" src="me.jpg"', html)
+
+    def test_a_missing_photo_is_hidden_rather_than_broken(self):
+        app = (WEB_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn("profileAvatar.addEventListener('error'", app)

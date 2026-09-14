@@ -165,6 +165,28 @@ bundled verses pre-analysed.
   There is no upper bound on groups: *Rap God* produces 56 under the exact engine
   and 257 under chain detection.
 
+### Playing it in time with the track
+
+The Playback panel is a real transport: play/pause, a scrubbable timeline, the
+clock, and **0.5× / 0.75× / 1×**. The speed control is the one that matters here
+— a double-time verse is unreadable at full speed, and half speed makes the
+internal rhymes audible one by one.
+
+**Click any line to jump the track to it.** That is the pairing that makes the
+analysis audible: see a rhyme, hear it. Clicking a *coloured syllable* still
+isolates its rhyme group instead, so both gestures stay available. Space plays
+and pauses.
+
+The highlight follows whatever timing the source actually has — per word from a
+caption track, per line from a synced lyric.
+
+### Your own photo on the author card
+
+Save a picture as `web/me.jpg` (`.png` and `.webp` also work). It is copied into
+the published site automatically. Without one the card shows a lettered disc, so
+nothing is ever broken — and the name and title are the two lines directly under
+the image in `web/index.html`.
+
 The design system is written down in [docs/DESIGN.md](./docs/DESIGN.md) — palette,
 type scale, motion rules, component specs. Its one idea: **the analysis is the
 album art.** Music players go achromatic so cover art can supply the colour;
