@@ -442,6 +442,10 @@ function audioController(src, onReady) {
   ui.audio.src = src;
   ui.audio.hidden = false;
   ui.audio.addEventListener('loadedmetadata', onReady, { once: true });
+
+  // Removed again in destroy(). The <audio> element is shared across songs, so
+  // listeners added per load would stack: after five songs the button would
+  // refresh five times per state change.
   ui.audio.addEventListener('play', refreshPlayButton);
   ui.audio.addEventListener('pause', refreshPlayButton);
 
@@ -454,7 +458,13 @@ function audioController(src, onReady) {
     duration() { return Number.isFinite(ui.audio.duration) ? ui.audio.duration : 0; },
     isPlaying() { return !ui.audio.paused; },
     setRate(rate) { ui.audio.playbackRate = rate; },
-    destroy() { ui.audio.pause(); ui.audio.removeAttribute('src'); ui.audio.load(); },
+    destroy() {
+      ui.audio.removeEventListener('play', refreshPlayButton);
+      ui.audio.removeEventListener('pause', refreshPlayButton);
+      ui.audio.pause();
+      ui.audio.removeAttribute('src');
+      ui.audio.load();
+    },
   };
 }
 
