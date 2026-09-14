@@ -1,6 +1,6 @@
 # RhymeMapper
 
-.PHONY: help install test test-offline stats plots demo web web-export serve karaoke site eval gold tune clean all
+.PHONY: help install test test-offline stats plots demo web web-export serve karaoke eval gold tune clean all
 
 PYTHON = python3
 DATA_DIR = data
@@ -17,7 +17,6 @@ help:
 	@echo "  make web       Export web/data.js and open the viewer"
 	@echo "  make serve     Serve the viewer with live analysis of your own lyrics"
 	@echo "  make karaoke   Export with word timings (AUDIO=... TIMINGS=...)"
-	@echo "  make site      Build the static read-only demo into site/"
 	@echo "  make eval      Run the ablation and artist-ID experiments"
 	@echo "  make gold      Rebuild eval/gold.json from the annotations"
 	@echo "  make clean     Remove caches and generated files"
@@ -70,12 +69,6 @@ karaoke:
 	$(PYTHON) -m rhymemap.webexport --input $(DATASET) --demo --timings $(TIMINGS) --audio $(AUDIO)
 	$(PYTHON) -m scripts.serve_web
 
-# The read-only demo that GitHub Pages serves. Songs are analysed now and baked
-# in; the result needs no Python at runtime.
-site:
-	$(PYTHON) -m scripts.build_static --output site
-	@echo "Preview it with: python3 -m http.server -d site 8000"
-
 eval: gold
 	$(PYTHON) -m eval.ablation
 	@echo ""
@@ -89,6 +82,5 @@ clean:
 	find . -name "__pycache__" -type d -prune -exec rm -rf {} +
 	find . -name "*.pyc" -delete
 	rm -f $(DATA_DIR)/stats.csv $(DATA_DIR)/*.png web/data.js
-	rm -rf site
 
 all: stats plots demo

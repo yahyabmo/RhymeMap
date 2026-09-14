@@ -62,7 +62,6 @@ rhymemap/                   the library (the only thing pip installs)
   main.py        demo CLI
 scripts/                    repository tooling, not distributed
   serve_web.py         the viewer with a live analysis endpoint
-  build_static.py      the read-only site for GitHub Pages
   analyse_song.py      analyse one link from the terminal
   generate_stats.py    corpus -> data/stats.csv
   align_audio.py       optional forced alignment

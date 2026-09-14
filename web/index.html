@@ -48,14 +48,6 @@
         surfaces the <span class="rotating" id="rotatingWord">multisyllabic chains</span>
         that carry a verse.
       </p>
-      <p class="hero-lede" id="heroLedeStatic" hidden>
-        Thirteen verses, broken into syllables and grouped by how they actually sound —
-        including the <span class="rotating" id="rotatingWordStatic">multisyllabic chains</span>
-        that carry a verse. Hover anything to trace it.
-        <strong>To analyse a YouTube link of your own, run it locally</strong> — this page is
-        static files, with no analysis engine behind it.
-      </p>
-
       <form class="linkbar" id="linkForm" autocomplete="off">
         <label class="sr-only" for="linkInput">YouTube link or song</label>
         <input id="linkInput" type="text" inputmode="url" spellcheck="false"
@@ -63,25 +55,9 @@
         <button class="btn btn-primary star-border" id="analyseBtn" type="submit">Analyse</button>
       </form>
 
-      <div class="install-box glass" hidden id="installBox">
-        <code id="installCmd">git clone https://github.com/yahyabmo/RhymeMap &amp;&amp; cd RhymeMap &amp;&amp; make install &amp;&amp; make serve</code>
-        <button class="install-copy" id="installCopy" type="button">Copy</button>
-      </div>
-
-      <div class="static-cta" hidden id="staticCta">
-        <button class="btn btn-primary star-border" id="exploreBtn" type="button">Explore the analysis</button>
-        <a class="btn btn-ghost" href="https://github.com/yahyabmo/RhymeMap#install"
-           target="_blank" rel="noopener">Analyse your own songs</a>
-      </div>
-
       <p class="hero-hint">
         No link? <button type="button" id="pasteToggle">Paste lyrics instead</button>
         · <button type="button" id="demoBtn">Load the demo verse</button>
-      </p>
-      <!-- The lede and the install command above already say this; a third
-           telling was noise. What is left is the one fact they do not cover. -->
-      <p class="static-note">
-        Everything below is already analysed and fully explorable.
       </p>
       <p class="status" id="status" role="status" aria-live="polite"></p>
 

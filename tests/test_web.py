@@ -135,8 +135,8 @@ class TestStaticFiles(unittest.TestCase):
                            "aurora", "grain", "status", "player",
                            # transport
                            "transport", "seek", "playToggle", "playIcon", "clock",
-                           # effects and static-mode help
-                           "heroParticles", "bgSwitch", "profileCard", "installBox"):
+                           # effects
+                           "heroParticles", "bgSwitch", "profileCard"):
             self.assertIn(f'id="{element_id}"', html)
 
     def test_effects_used_by_the_app_are_exported(self):
@@ -282,86 +282,3 @@ class TestServer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-class TestOptionalAssets(unittest.TestCase):
-    """The author photo is the one file a person adds themselves.
-
-    It must be copied into the published site when it exists, and its absence
-    must not fail the build -- the card falls back to a lettered disc, so a
-    missing photo is a normal state rather than an error.
-    """
-
-    def test_photo_names_are_recognised(self):
-        from scripts.build_static import OPTIONAL_ASSETS
-
-        self.assertIn("me.jpg", OPTIONAL_ASSETS)
-        for name in OPTIONAL_ASSETS:
-            with self.subTest(name=name):
-                self.assertTrue(name.startswith("me."))
-
-    def test_required_assets_do_not_include_the_photo(self):
-        """Otherwise a fresh clone with no photo could not build at all."""
-        from scripts.build_static import ASSETS, OPTIONAL_ASSETS
-
-        self.assertFalse(set(ASSETS) & set(OPTIONAL_ASSETS))
-
-    def test_the_card_points_at_a_local_file(self):
-        html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
-        self.assertIn('id="profileAvatar" src="me.jpg"', html)
-
-    def test_a_missing_photo_is_hidden_rather_than_broken(self):
-        app = (WEB_DIR / "app.js").read_text(encoding="utf-8")
-        self.assertIn("profileAvatar.addEventListener('error'", app)
-
-
-class TestAssetStamping(unittest.TestCase):
-    """Pages caches JS and CSS hard, and the filenames never changed.
-
-    A deploy could therefore alter every effect on the page and a returning
-    visitor would see none of them, with nothing to suggest why.
-    """
-
-    def stamp(self, extra=""):
-        import tempfile
-
-        from scripts.build_static import stamp_assets
-
-        with tempfile.TemporaryDirectory() as raw:
-            site = Path(raw)
-            (site / "index.html").write_text(
-                '<link href="style.css"><script src="app.js"></script>'
-                '<script src="effects.js"></script><script src="data.js"></script>',
-                encoding="utf-8")
-            (site / "style.css").write_text("body{}", encoding="utf-8")
-            (site / "app.js").write_text("// app", encoding="utf-8")
-            (site / "effects.js").write_text("// fx", encoding="utf-8")
-            (site / "data.js").write_text(f"// data{extra}", encoding="utf-8")
-            version = stamp_assets(site)
-            return version, (site / "index.html").read_text(encoding="utf-8")
-
-    def test_every_versioned_asset_is_stamped(self):
-        _, html = self.stamp()
-        for name in ("style.css", "app.js", "effects.js", "data.js"):
-            with self.subTest(asset=name):
-                self.assertIn(f'{name}?v=', html)
-
-    def test_the_stamp_follows_the_content(self):
-        first, _ = self.stamp()
-        second, _ = self.stamp(extra="changed")
-        self.assertNotEqual(first, second)
-
-    def test_identical_content_keeps_the_same_url(self):
-        """Otherwise every deploy would discard a cache that was still valid."""
-        self.assertEqual(self.stamp()[0], self.stamp()[0])
-
-    def test_the_data_file_is_part_of_the_stamp(self):
-        """Stamping before data.js was written left the songs cached forever."""
-        import inspect
-
-        from scripts import build_static
-
-        source = inspect.getsource(build_static.build)
-        self.assertLess(source.index('data = output / "data.js"'),
-                        source.index("stamp_assets(output)"),
-                        "stamp_assets must run after data.js is written")

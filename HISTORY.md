@@ -206,3 +206,31 @@ audit found.
 - No call to youtube.com or lrclib.net has ever run. The environment this was
   built in denies both hosts by policy, so every network path is exercised
   against recorded payloads through substituted seams.
+
+
+---
+
+## v4.1 (2026-09-14) – One deployment, not two
+
+### The static build is gone
+- GitHub Pages served a read-only copy: the analysis baked in at build time, no
+  engine behind it. It could display an analysis and never produce one.
+- So it opened with a link box that could not work. Hiding the box did not fix
+  it either - the page then spent its hero explaining what it could not do, and
+  people still went looking for the box. That is not a demo, it is an apology.
+- One deployment now: the whole application, at a URL, with the link box
+  working. `render.yaml` and a deploy button make it one click, free, no card.
+- Removed with it: `scripts/build_static.py`, the Pages workflow, the
+  `RHYMEMAP_STATIC` flag and every branch in the viewer that tested it.
+
+### Why not run it in the browser instead
+- Pyodide would remove the server entirely. It cannot work: a browser cannot
+  fetch the lyrics. YouTube forbids cross-origin reads of caption tracks, and
+  LRCLIB's CORS policy rejects browser requests too. That leaves ~20 MB of
+  WebAssembly to analyse text pasted in by hand, which the server already does.
+
+### Effects
+- The backgrounds were measured and found to be, effectively, absent: aurora
+  peaked at 37/255 against a #08080c page and topography averaged 0.4. Raised to
+  116 and 122. Topography was also drawing disconnected scratches - the
+  marching-squares step handled two of sixteen corner configurations.

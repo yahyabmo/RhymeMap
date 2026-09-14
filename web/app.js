@@ -13,9 +13,7 @@ const verses = typeof rhymeData !== 'undefined' ? rhymeData.slice() : [];
 const el = (id) => document.getElementById(id);
 const ui = {
   aurora: el('aurora'), grain: el('grain'), waves: el('waves'), progress: el('progress'),
-  rotatingWord: el('rotatingWord'), rotatingWordStatic: el('rotatingWordStatic'),
-  heroLede: el('heroLede'), heroLedeStatic: el('heroLedeStatic'),
-  staticCta: el('staticCta'), explore: el('exploreBtn'),
+  rotatingWord: el('rotatingWord'), heroLede: el('heroLede'),
   form: el('linkForm'), input: el('linkInput'), analyse: el('analyseBtn'),
   status: el('status'), pasteToggle: el('pasteToggle'), pastePanel: el('pastePanel'),
   lyricsInput: el('lyricsInput'), analysePaste: el('analysePasteBtn'), demo: el('demoBtn'),
@@ -26,7 +24,6 @@ const ui = {
   trackArt: el('trackArt'), trackBadges: el('trackBadges'),
   player: el('player'), playerFrame: el('playerFrame'), audio: el('audio'),
   heroTitle: el('heroTitle'), heroParticles: el('heroParticles'),
-  installBox: el('installBox'), installCmd: el('installCmd'), installCopy: el('installCopy'),
   transport: el('transport'), seek: el('seek'), playToggle: el('playToggle'),
   playIcon: el('playIcon'), clock: el('clock'), playerNote: el('playerNote'),
   bgSwitch: el('bgSwitch'), profileCard: el('profileCard'),
@@ -749,14 +746,7 @@ async function post(path, body) {
  * backend, so live analysis is unavailable there. It is flagged by a global the
  * build step writes into data.js, rather than guessed from the protocol -- the
  * page is served over https in both cases. */
-const isStatic = () => typeof RHYMEMAP_STATIC !== 'undefined' && RHYMEMAP_STATIC;
-
 function requireServer() {
-  if (isStatic()) {
-    // The note under the hero already explains this; repeating it in the status
-    // line just says the same thing twice.
-    return false;
-  }
   if (overHttp()) return true;
   setStatus('Analysing needs the local server — run `make serve`.', 'error');
   return false;
@@ -842,33 +832,6 @@ function populateTracks() {
 function init() {
   document.body.classList.add('dim');
 
-  if (isStatic()) {
-    // Swap the hero for one that describes what this build actually does.
-    document.body.classList.add('is-static');
-    ui.heroLede.hidden = true;
-    ui.heroLedeStatic.hidden = false;
-    ui.staticCta.hidden = false;
-
-    // The one question a visitor actually arrives with is "where do I paste a
-    // link?". Answer it with the command rather than a sentence about it.
-    ui.installBox.hidden = false;
-    ui.installCopy.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(ui.installCmd.textContent.trim());
-        ui.installCopy.textContent = 'Copied';
-      } catch (_) {
-        // Clipboard access is refused over plain http and in some browsers;
-        // selecting the text is the fallback that always works.
-        const range = document.createRange();
-        range.selectNodeContents(ui.installCmd);
-        const selection = window.getSelection();
-        selection.removeAllRanges();
-        selection.addRange(range);
-        ui.installCopy.textContent = 'Select & copy';
-      }
-      setTimeout(() => { ui.installCopy.textContent = 'Copy'; }, 2200);
-    });
-  }
 
   wavesHandle = Effects.waves(ui.waves);
   applyBackground(localStorage.getItem('rhymemap-bg') || 'aurora');
@@ -892,7 +855,7 @@ function init() {
   Effects.magnet(ui.analyse);
   Effects.scrollProgress(ui.progress);
   const rotating = ['multisyllabic chains', 'slant rhymes', 'internal rhyme', 'assonance'];
-  Effects.rotatingText(isStatic() ? ui.rotatingWordStatic : ui.rotatingWord, rotating);
+  Effects.rotatingText(ui.rotatingWord, rotating);
   document.querySelectorAll('.panel').forEach(Effects.spotlight);
   document.querySelectorAll('.stat').forEach((node) => { Effects.glare(node); Effects.tilt(node); });
   ui.lyrics.classList.add('fade-foot');
@@ -910,10 +873,6 @@ function init() {
   ui.analysePaste.addEventListener('click', analysePasted);
   ui.lyricsInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) analysePasted();
-  });
-
-  ui.explore.addEventListener('click', () => {
-    ui.analysis.scrollIntoView({ block: 'start' });
   });
 
   ui.demo.addEventListener('click', () => {

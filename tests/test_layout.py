@@ -24,7 +24,6 @@ MODULES_WITH_ROOT = [
     "rhymemap.cache",
     "rhymemap.main",
     "rhymemap.webexport",
-    "scripts.build_static",
     "scripts.serve_web",
     "eval.ablation",
     "eval.artist_id",

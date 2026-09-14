@@ -222,7 +222,6 @@ dataset/*
 # RhymeMapper generated artefacts
 .cache/
 web/data.js
-site/
 data/stats.csv
 web/*.wav
 web/*.mp3

@@ -53,12 +53,6 @@ jobs:
           python -m eval.build_gold
           python -m eval.ablation
 
-      - name: Build the static site
-        # The Pages deploy runs this too. Running it here as well means a build
-        # that only breaks on 3.10 is caught by CI rather than by a failed
-        # deploy after merge.
-        run: python -m scripts.build_static --output /tmp/site-check
-
   package:
     # The project claims to be pip-installable. This is that claim, tested.
     name: Install as a package

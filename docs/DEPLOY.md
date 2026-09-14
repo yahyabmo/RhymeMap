@@ -1,146 +1,82 @@
-# Putting RhymeMapper online, for free
+# Putting RhymeMapper online
 
-There are two versions of this, and they answer different questions.
+One deployment: the whole application, at a URL, with the link box working.
 
-| | Read-only demo | Full application |
-|---|---|---|
-| Analyses new songs | no | yes |
-| Needs a server | no | yes |
-| Free, permanently | **yes** | yes (Render, Koyeb) |
-| Sleeps when idle | never | usually |
-| Setup | one settings toggle | ~10 minutes |
+There used to be a second — a read-only static build for GitHub Pages, with no
+engine behind it. It has been removed. It could show an analysis but never
+produce one, so the first thing anyone did on it was paste a link into a box
+that could not work, and the page spent its hero explaining why.
 
-**Start with the demo.** It is free forever, never sleeps, and is the right
-thing to put in a portfolio or a defence. Add the full application afterwards
-if you want strangers to be able to paste their own links.
+## Deploy it
 
----
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/yahyabmo/RhymeMap)
 
-## 1. Read-only demo — GitHub Pages
+That button reads `render.yaml` from the repository and builds the `Dockerfile`.
+Free, and **no credit card** — the only host of its kind still true in 2026.
 
-Songs are analysed at build time and baked into the page, so there is no Python
-at runtime and nothing to keep running. Everything interactive still works:
-hovering, tracing a rhyme group, isolating a chain, switching between songs and
-engines. Only *analysing something new* is unavailable, and the page says so.
+By hand, if you prefer: [dashboard.render.com](https://dashboard.render.com) →
+**New → Blueprint** → pick the repository.
 
-**Setup, once:**
+### What free costs you
 
-1. Repository **Settings → Pages → Source: GitHub Actions**.
-2. Push to `main`, or run the **Pages** workflow by hand from the Actions tab
-   (it accepts `workflow_dispatch`, so you can publish from any branch).
+The service **sleeps after 15 minutes idle**, and the next visitor waits around
+50 seconds while it wakes. Fine for a link in a report. Awkward if you are
+standing in front of an audience — open the page a minute before you need it.
 
-The site appears at `https://<your-username>.github.io/RhymeMap/`.
+[Koyeb](https://www.koyeb.com) is the alternative, on the same shape of free
+tier, though some regions ask for a card. **Fly.io no longer has a free tier.**
 
-Build it locally to check first:
+This landscape moves. Hugging Face Spaces was the recommendation here until it
+made Docker builds a paid feature; treat any of this as worth re-checking.
 
-```bash
-make site
-python3 -m http.server -d site 8000
+## YouTube from a datacentre
+
+YouTube refuses a lot of datacentre traffic — `Sign in to confirm you're not a
+bot`. Every yt-dlp-based tool has this problem and it is not fixable from here.
+
+It matters much less than it used to. Since lyrics resolve through a chain, a
+refused extraction falls back to the public oEmbed endpoint for the title, and
+then to **LRCLIB**, which does not care what address you come from. So a hosted
+instance usually still finds the song — it loses the per-word caption timing and
+keeps per-line timing, which is enough to drive playback.
+
+Pasting lyrics is unaffected either way.
+
+If you want the word-level timing from a host, pass browser cookies:
+
+```
+RHYMEMAP_COOKIES_FROM_BROWSER=chrome    # or firefox, edge, brave
+RHYMEMAP_COOKIES=/path/to/cookies.txt   # or an exported cookie file
 ```
 
-To change which songs appear, edit `dataset/artists_sample.csv` and rebuild —
-each row becomes a song in the picker.
+Set either as an environment variable on the service. Nothing is read from any
+browser unless you set one.
 
----
+## Why not run it in the browser instead
 
-## 2. Full application — a container host
+It would remove the server entirely: Python compiled to WebAssembly (Pyodide),
+everything client-side, hosted as static files.
 
-The analysis engine is Python, so the live version needs somewhere to run it.
-The included `Dockerfile` works on every host below.
-
-> **Hugging Face Spaces no longer fits.** Docker and Gradio Spaces became
-> PRO-only; only *Static* Spaces are still free, and a static Space is just
-> another way to host the read-only demo that GitHub Pages already serves. An
-> earlier version of this guide recommended it. It was right when written and is
-> not any more — worth re-checking before you commit to any of the options below.
-
-### Render — the one to try first
-
-Free, **no credit card**, builds straight from the `Dockerfile`, and 750
-instance-hours a month covers one container running continuously.
-
-A `render.yaml` blueprint is included, so:
-
-1. <https://dashboard.render.com> → **New → Blueprint**
-2. Point it at this repository. It reads `render.yaml` and configures itself.
-
-The catch: a free service **sleeps after 15 minutes idle**, and the next visitor
-waits roughly 50 seconds for it to wake. Fine for a link in a report; awkward if
-you are presenting live.
-
-### Koyeb
-
-Also free without a card, also Docker, and it scales to zero. Worth trying if
-Render's cold start annoys you — the trade-offs differ slightly and both change
-over time.
-
-### Fly.io and Railway
-
-Both work with this `Dockerfile`, and neither is free any more: Fly moved to a
-paid model, Railway gives trial credit and then bills.
-
-### Keeping the image small
-
-The runtime stage installs `requirements-server.txt`, not `requirements.txt`.
-pandas, matplotlib, seaborn and scikit-learn are about 157 MB and belong to the
-corpus tooling, plotting and evaluation — none of which runs behind the web
-server. Dropping them roughly halves the image, which is a shorter cold start on
-a host that sleeps.
-
-The builder stage still installs everything, because it bakes the NLTK corpora,
-the pre-analysed songs and the phonetic caches into the image so the first
-request does not pay for them.
-
-## The thing to know before you deploy the full version
-
-**YouTube blocks datacenter IP addresses.** Requests from a cloud host are much
-more likely to be met with *"Sign in to confirm you're not a bot"* than requests
-from a home connection. This is not something this project can fix — it affects
-every tool built on `yt-dlp`, and it is why the error message for that case
-names it specifically.
-
-What this means in practice:
-
-- **Locally it works.** `make serve` on your own machine is the reliable path.
-- **Hosted, the link box may fail** while everything else keeps working. Pasting
-  lyrics directly is unaffected, since that never touches YouTube.
-- **It varies** by host, by IP, and over time. Worth trying; not worth promising
-  to anyone.
-
-If you are demonstrating this to a room, run it locally. Use the hosted version
-for the link you leave behind.
-
----
+It cannot work, for a reason that has nothing to do with the engine. **A browser
+cannot fetch the lyrics.** YouTube does not allow cross-origin reads of its
+caption tracks, and [LRCLIB's CORS policy rejects browser requests
+too](https://github.com/monochrome-music/monochrome/issues/646) — it does not
+even permit the `user-agent` header. That leaves about 20 MB of WebAssembly
+download to analyse text you paste in by hand, which the server does already.
 
 ## Cost
 
-Everything above is free at the scale this project operates at. GitHub Pages has
-a 1 GB site limit and a soft 100 GB/month bandwidth limit; the demo is under
-500 KB. Hugging Face Spaces' CPU tier is free with no time limit.
-
----
-
-## Which URL to put in a report
-
-The GitHub Pages one. It loads instantly, never sleeps, cannot break, and shows
-the analysis working on thirteen songs. Mention the local install for anyone who
-wants to try their own.
-
-
----
+Nothing, on the free tier. No card. The trade is the sleep, not money.
 
 ## What has and has not been tested
 
-The static build and its workflow are verified end to end: the site builds, is
-served, and every interaction works in a browser.
+Verified: the exact file set the runtime stage copies, assembled into a
+directory with the server bound to `0.0.0.0:7860` as the container binds it —
+`GET /` and `/data.js` return 200 and `POST /api/analyze` returns a valid
+analysis. The `.dockerignore` was verified the same way: the builder's own step
+runs inside a context with the ignore rules applied.
 
-The `Dockerfile` is **not** built anywhere in CI, and was written in an
-environment with no container daemon, so `docker build` has never run against
-it. What *was* verified is the part most likely to be wrong: the runtime layout.
-The exact set of files the runtime stage copies was assembled into a directory,
-`requirements-server.txt` installed into a clean virtualenv, and the server
-started from it — `GET /` returned 200 and `POST /api/analyze` returned a valid
-analysis under all three engines, with pandas confirmed absent.
-
-If the build fails, it will be in the mechanics (a COPY path, the `useradd`
-step), not in whether the application runs on those dependencies.
+**Not verified: `docker build` itself.** There is no container daemon in the
+environment this was written in, so the build mechanics — the `COPY` paths, the
+`useradd` step, the two-stage handover — have never actually run. If the first
+build fails, that is where to look.

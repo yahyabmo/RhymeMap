@@ -18,7 +18,7 @@ make demo           # colour-code the demo verse in the terminal
 make stats          # analyse a corpus -> data/stats.csv
 make plots          # generate every figure into data/
 make web            # export web/data.js and open the browser viewer
-make serve          # full interface: paste a YouTube link or your own lyrics
+make serve          # the full interface: paste a YouTube link or your own lyrics
 make test           # run the unit tests
 make eval           # gold set, ablation table, artist-ID experiment
 ```
@@ -130,19 +130,18 @@ No link? Paste lyrics directly, or point the tool at a local file with
 
 ## Online
 
-`make site` builds a read-only demo — songs analysed at build time, no server —
-and `.github/workflows/pages.yml` publishes it to GitHub Pages for free. Enable
-**Settings → Pages → Source: GitHub Actions** once and it deploys on every push
-to `main`.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/yahyabmo/RhymeMap)
 
-The full version, which analyses new links, needs Python running. The included
-`Dockerfile` and `render.yaml` deploy to Render's free tier (no card; it sleeps
-after 15 minutes idle). Two caveats worth knowing first: YouTube blocks
-datacenter IPs, so the link box is much less reliable from a cloud host than
-from your own machine — pasting lyrics is unaffected — and Hugging Face Spaces
-is no longer an option, having made Docker PRO-only.
+One click. It reads `render.yaml`, builds the `Dockerfile`, and gives you the
+whole application at a URL — link box included. Free, no credit card. It sleeps
+after 15 minutes idle and takes about 50 seconds to wake.
 
-Full instructions: [docs/DEPLOY.md](./docs/DEPLOY.md)
+A read-only static build for GitHub Pages used to live here too. It has been
+removed: it could display an analysis but never produce one, so it opened with a
+link box that could not work and spent its hero explaining why.
+
+Full instructions, including what to do when YouTube refuses a datacentre
+address: [docs/DEPLOY.md](./docs/DEPLOY.md)
 
 ## The interface
 
