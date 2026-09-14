@@ -1,86 +1,79 @@
 # RhymeMapper
 
-**Live: [rhymemapper.onrender.com](https://rhymemapper.onrender.com)** — paste a
-YouTube link. (Free hosting sleeps when idle; the first visit after a quiet spell
-takes about 50 seconds to wake.)
+**See how a song rhymes.** Paste a YouTube link and RhymeMapper finds the
+lyrics, breaks every word into syllables, and colours the ones that rhyme — then
+plays the track back with the rhymes lighting up in time.
 
-**RhymeMapper** analyses rhyme schemes in rap lyrics from phonetic data. It converts
-words to phonemes, splits them into syllables, and groups syllables that rhyme —
-colour-coding them in the terminal and in a browser viewer, and computing metrics
-that can be compared across tracks and artists.
+**▶ Live at [rhymemapper.onrender.com](https://rhymemapper.onrender.com)**
+*(free hosting sleeps when idle; the first visit after a quiet spell takes about
+50 seconds to wake)*
 
-Built by **Yahya Bel Hajjam**.
+Built by **Yahya Bel Hajjam** and **Sohayb El Yaktini**.
 
-## Install
+---
+
+## What it actually does
+
+Rhyme is not string matching, and spelling is no guide at all. So every word
+becomes phonemes, every phoneme sequence becomes syllables split into **onset /
+nucleus / coda**, and syllables are compared on *articulatory distance* — how
+the mouth actually moves.
+
+Scores from the running engine, which groups a pair above **0.78**:
+
+| pair | score | |
+|---|---|---|
+| `blue` / `shoe` | **1.00** | not one letter in common at the end |
+| `through` / `blue` | **1.00** | nor here |
+| `time` / `mine` | **0.96** | different codas, near-identical mouth shape |
+| `cat` / `cat` | **0.65** | *does not group* — an identical onset is penalised |
+| `cat` / `dog` | **0.54** | *does not group* |
+
+The `cat` / `cat` row is the point. On its rime alone a word against itself is a
+perfect 1.00; the onset penalty pulls it under the threshold, because repeating
+a word is not rhyming with it.
+
+```
+link or lyrics ─▶ resolve ─▶ phonemes ─▶ syllables ─▶ feature distance
+                                                    ─▶ cluster ─▶ name from the rime
+```
+
+Groups are named after how they **sound** — `-ames`, `-ike`, `straight face
+lookin' boy` — not `A`, `B`, `AB`. The name is computed from the group's own
+rime, so the same rhyme is called the same thing in every song, and the colour,
+hashed from the name, is stable too.
+
+---
+
+## Quick start
 
 ```bash
-make install        # dependencies + the NLTK corpora g2p_en needs
+git clone https://github.com/yahyabmo/RhymeMap
+cd RhymeMap
+make install     # dependencies + the NLTK corpora
+make serve       # opens the interface
 ```
 
-## Use
+Then paste a YouTube link, or your own lyrics.
 
-```bash
-make demo           # colour-code the demo verse in the terminal
-make stats          # analyse a corpus -> data/stats.csv
-make plots          # generate every figure into data/
-make web            # export web/data.js and open the browser viewer
-make serve          # the full interface: paste a YouTube link or your own lyrics
-make test           # run the unit tests
-make eval           # gold set, ablation table, artist-ID experiment
-```
-
-Every entry point is a real CLI:
-
-```bash
-python -m rhymemap.main --file my_lyrics.txt --artist "Nas" --legend
-python -m scripts.generate_stats --input dataset/my_corpus.csv --output data/mine.csv
-python -m analysis.run_all_plots --show
-```
-
-Point any target at another corpus with `make stats DATASET=path/to.csv`. The CSV
-needs `track_name`, `artist`, and one of `artist_verses` / `raw_lyrics` / `lyrics`.
-A larger corpus to try:
-<https://www.kaggle.com/datasets/ceebloop/rap-lyrics-for-nlp>
-
-## How it works
-
-```
-link or lyrics -> resolve (captions / LRCLIB) -> clean_word
-               -> syllabify (CMUdict) -> Syllable(onset, nucleus, coda)
-               -> articulatory feature distance -> cluster -> name from the rime
-               -> coloured output / metrics / figures / synced playback
-```
-
-Phoneme and syllable lookups are cached in `.cache/`, so a repeated run of
-`make stats` skips the phonetic work entirely (7.1s -> 0.34s on the bundled
-corpus). Words outside CMUdict are recovered by spelling where possible —
-g-dropping (`comin'` -> `coming`) and stripped apostrophes (`dont` -> `don't`) —
-before falling back to the neural grapheme-to-phoneme model.
-
-## Metrics
-
-| Metric | Meaning |
+| | |
 |---|---|
-| **Density** | % of syllables carrying a rhyme label |
-| **Multi** | % of syllables inside a run of ≥2 consecutive syllables sharing one label |
-| **Diversity** | distinct rhyme groups / total syllables |
-| **Signatures** | number of distinct rhyme groups |
-| **Syll.** | total syllable count |
+| `make serve` | the full interface |
+| `make demo` | colour the demo verse in your terminal |
+| `make test` | 456 unit tests |
+| `make eval` | rebuild the gold set and the ablation table |
+| `make stats` / `make plots` | corpus statistics and figures |
 
-## Analyse any song
+Python 3.10 or newer.
 
-Paste a YouTube link:
+---
 
-```bash
-make serve                                  # then paste a link in the browser
-python -m scripts.analyse_song "https://www.youtube.com/watch?v=..."
-```
+## Analysing any song
 
 **Captions alone are not enough.** Captioning a music video is optional and most
-labels skip it, so a captions-only tool fails on a large fraction of music — and
-fails invisibly, since the same code and the same kind of link either work or
-don't depending on something the uploader decided. Lyrics are resolved through
-four sources in descending order of trust:
+labels skip it, so a captions-only tool fails on a large share of music — and
+fails invisibly, since whether it works depends on something the uploader
+decided. Lyrics are resolved through four sources in descending order of trust:
 
 | | source | gives | written by |
 |---|---|---|---|
@@ -90,36 +83,21 @@ four sources in descending order of trust:
 | 4 | LRCLIB plain | lyrics | a person |
 
 LRCLIB sits above automatic captions deliberately. Machine transcription of
-singing mishears rhyme endings specifically, and rhyme endings are the one thing
-this project measures — so human lyrics with coarser timing beat a machine's
-guess with finer timing. LRCLIB is free, needs no key, and is read with `urllib`;
-it adds no dependency.
+singing mishears rhyme endings specifically — and rhyme endings are the one
+thing this project measures. Better text with coarser timing beats worse text
+with finer timing.
 
 The page says which source it used and how finely it can sync, because that
-changes how much the analysis can be trusted. If every source comes up empty the
-error lists what each one answered, so a block can be told from an absence.
+changes how much the analysis can be trusted. If everything comes up empty, the
+error lists what each source answered, so a block reads differently from an
+absence.
 
-Three things captions get wrong, and what the parser does about them:
-
-- **They scroll.** Automatic captions repeat the tail of the previous cue so the
-  viewer keeps a rolling two-line window. Read literally that yields every lyric
-  two or three times — and a duplicated line rhymes perfectly with itself, which
-  would inflate density and chain counts. Cues are reduced to what they add.
-- **Cue boundaries are not line breaks.** A cue may hold a line and a half. Since
-  line-final rhyme is most of what this measures, merging two lines deletes the
-  rhyme at the join, so lines are recovered from the pauses between words —
-  with a threshold taken from the song's own median gap, so a double-time verse
-  and a slow hook both work.
-- **`[Music]`, `[Applause]`** and friends are filtered out.
-
-Audio is never downloaded. The viewer embeds YouTube's own player and drives the
-highlight from its clock, which keeps playback on the platform licensed to serve
-it and costs no bandwidth or disk.
+**Audio is never downloaded.** The viewer embeds YouTube's own player and drives
+the highlight from its clock.
 
 ### If YouTube asks you to prove you are not a bot
 
-It does that to addresses it does not recognise — always to datacentres,
-sometimes to home connections. The fix is to let it see a signed-in session:
+It does that to addresses it does not recognise. Let it see a signed-in session:
 
 ```bash
 RHYMEMAP_COOKIES_FROM_BROWSER=chrome make serve   # or firefox, edge, brave
@@ -127,176 +105,158 @@ RHYMEMAP_COOKIES=/path/to/cookies.txt make serve  # or an exported cookie file
 ```
 
 Nothing is read from your browser unless you set one of these. Even when
-extraction is refused outright, the song's title is recovered from YouTube's
-public oEmbed endpoint and the lyrics lookup still runs — so a block usually
-costs you the word-level timing, not the analysis.
+extraction is refused outright, the title is recovered from YouTube's public
+oEmbed endpoint and the lyrics lookup still runs — so a block usually costs the
+word-level timing, not the analysis.
 
-No link? Paste lyrics directly, or point the tool at a local file with
-`--file lyrics.txt`.
-
-## Online
-
-Running at **[rhymemapper.onrender.com](https://rhymemapper.onrender.com)**.
-
-To run your own copy:
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/yahyabmo/RhymeMap)
-
-One click. It reads `render.yaml`, builds the `Dockerfile`, and gives you the
-whole application at a URL — link box included. Free, no credit card. It sleeps
-after 15 minutes idle and takes about 50 seconds to wake.
-
-A read-only static build for GitHub Pages used to live here too. It has been
-removed: it could display an analysis but never produce one, so it opened with a
-link box that could not work and spent its hero explaining why.
-
-Full instructions, including what to do when YouTube refuses a datacentre
-address: [docs/DEPLOY.md](./docs/DEPLOY.md)
+---
 
 ## The interface
 
-`make serve` opens the full interface; `make web` produces a static page with the
-bundled verses pre-analysed.
-
 - **Hover any syllable** and every syllable in its rhyme group lights up across
   the verse. The tooltip shows the onset, nucleus and coda behind the match.
-- **The sidebar lists rhyme groups longest-first.** Click one to isolate it —
-  this is what makes a chain like `straight face lookin' boy` / `take place
-  lookin' boy` / `they say lookin' boy` legible as a single structure.
-- **Switching the engine re-analyses the song on screen**, so the v1 baseline and
+- **Click a coloured syllable** to isolate its group; **click anywhere else on a
+  line** to jump the track there. See a rhyme, hear it.
+- **Playback** is a real transport: play/pause, a scrubbable timeline, the clock,
+  and **0.5× / 0.75× / 1×**. Half speed is what makes a double-time verse
+  legible.
+- **Switching engine re-analyses the song on screen**, so the v1 baseline and
   the current engine can be compared on the same lyrics.
-- **Groups are named after how they sound** — `-ames`, `-ike`, `straight face
-  lookin' boy` — not `A`, `B`, `AB`. The name comes from the group's own rime, so
-  it means something, it can be said aloud, and it is the same in every song.
-  Each row shows example words, the exact rime, and a map of where the group
-  falls across the verse.
-- **Rhyme colour is generated from the phonetics**, not picked from a palette.
-  There is no upper bound on groups: *Rap God* produces 56 under the exact engine
-  and 257 under chain detection.
+- **Progress is measured, not timed.** While a link resolves, the percentage
+  moves when a step actually finishes; during the analysis it moves per line,
+  which is where the time goes.
+- **Colour is generated from the phonetics**, not picked from a palette, so
+  there is no upper bound on groups. *Rap God* produces 123 under the exact
+  engine and 257 under chain detection.
 
-### Playing it in time with the track
+Effects — particle text, split-flap clock, border glow, tilted card, elastic
+slider, aurora, grain — are ported to vanilla JS from the patterns in
+[react-bits](https://github.com/DavidHDev/react-bits). No frameworks, no build
+step. All of them switch off under `prefers-reduced-motion`.
 
-The Playback panel is a real transport: play/pause, a scrubbable timeline, the
-clock, and **0.5× / 0.75× / 1×**. The speed control is the one that matters here
-— a double-time verse is unreadable at full speed, and half speed makes the
-internal rhymes audible one by one.
+The design system is written down in [docs/DESIGN.md](./docs/DESIGN.md). Its one
+idea: **the analysis is the album art.** Music players go achromatic so cover art
+can supply the colour; RhymeMapper has no cover art, it has phonetics, so the
+chrome stays near-black and every hue on screen is computed from the sound.
 
-**Click any line to jump the track to it.** That is the pairing that makes the
-analysis audible: see a rhyme, hear it. Clicking a *coloured syllable* still
-isolates its rhyme group instead, so both gestures stay available. Space plays
-and pauses.
+---
 
-The highlight follows whatever timing the source actually has — per word from a
-caption track, per line from a synced lyric.
+## Four engines
 
-### Your own photo on the author card
+| engine | groups syllables by |
+|---|---|
+| `chains` | repeated multisyllabic spans — **the default** |
+| `similarity` | articulatory feature distance, then clustering |
+| `families` | v1 signature + consonant classes |
+| `exact` | v1 baseline: string equality on `{vowel}_{stress}_{coda}` |
 
-Save a picture as `web/me.jpg` (`.png` and `.webp` also work). Without one the
-card shows a lettered disc, so nothing is ever broken — and the name and title
-are the two lines directly under the image in `web/index.html`.
-
-The design system is written down in [docs/DESIGN.md](./docs/DESIGN.md) — palette,
-type scale, motion rules, component specs. Its one idea: **the analysis is the
-album art.** Music players go achromatic so cover art can supply the colour;
-RhymeMapper has no cover art, it has phonetics, so the chrome stays near-black
-and every hue on screen is computed from the sound.
-
-Effects (woven threads on the GPU, particle text, split-flap, border glow, tilted
-card, elastic slider, grain, count-up, click-spark, magnetic buttons,
-spotlight panels, scrambled loading text) are ported to vanilla JS from the
-patterns in [react-bits](https://github.com/DavidHDev/react-bits). All of them
-switch off under `prefers-reduced-motion`, and the page stays fully usable.
-
-## Playing it against the audio
-
-Give the viewer word timings and it highlights each rhyme in time with the track.
-
-```bash
-# 1. produce word timings (any of these work)
-python -m scripts.align_audio --audio track.mp3 --lyrics verse.txt -o timings.json
-#    ...or export labels from Audacity, or write the JSON by hand:
-#    [{"word": "palms", "start": 0.51, "end": 0.78}, ...]
-
-# 2. put the audio in web/ and export with the timings
-cp track.mp3 web/
-make karaoke AUDIO=track.mp3 TIMINGS=timings.json
-```
-
-Forced alignment is deliberately **not** a dependency. Every aligner is heavy —
-WhisperX pulls in torch, aeneas needs espeak and ffmpeg — so `scripts/align_audio.py`
-uses whichever is installed and explains the options when neither is. Nothing in
-`rhymemap/` imports them. WebVTT, SRT and Audacity label tracks are read directly, so
-you can skip aligners entirely and label the words by hand.
-
-Without timings the player is hidden and everything else behaves identically.
+---
 
 ## Does it work?
 
-`make eval` rebuilds the gold set, runs the full ablation, and regenerates
-[`eval/RESULTS.md`](./eval/RESULTS.md) and [`eval/ARTIST_ID.md`](./eval/ARTIST_ID.md).
+`make eval` rebuilds the gold set, runs the ablation and regenerates
+[`eval/RESULTS.md`](./eval/RESULTS.md) and
+[`eval/ARTIST_ID.md`](./eval/ARTIST_ID.md).
 
-Scored against 13 hand-annotated verses (123 lines, 4 artists), grouping lines by
-their final rhyme:
+Scored against 13 hand-annotated verses (123 lines, 4 artists), grouping lines
+by their final rhyme:
 
 | Configuration | Pairwise F1 | B³ F1 |
 |---|---|---|
-| all lines separate (trivial) | 0.000 | 0.657 |
-| all lines together (trivial) | 0.287 | 0.536 |
+| all lines separate *(trivial)* | 0.000 | 0.657 |
+| all lines together *(trivial)* | 0.287 | 0.536 |
 | `exact` — v1 baseline | 0.648 | 0.861 |
-| `+consonant classes` | 0.654 | 0.849 |
-| `+vowel space` | 0.727 | 0.899 |
+| `+ consonant classes` | 0.654 | 0.849 |
+| `+ vowel space` | 0.727 | 0.899 |
 | **`similarity` — full feature scoring** | **0.865** | **0.942** |
 | `similarity` without the onset penalty | 0.832 | 0.934 |
 | `chains` — multisyllabic spans | 0.454 | 0.786 |
 
 Three things worth stating plainly:
 
-- The similarity engine is a real improvement on the v1 baseline: **0.648 → 0.865**.
-- **The chain engine scores worse than the baseline on this test.** It has the
-  highest precision of any configuration and the lowest recall — it groups
-  correctly but sparsely, because it looks for repeated contiguous spans while
-  this gold set annotates line-final rhyme. It is the right tool for seeing a
-  verse's structure and the wrong one for partitioning line endings, so
-  `similarity` is the default.
-- **Metrics alone do not identify the artist.** Every classifier tried lands at
-  or below the 25% chance level, and no single metric separates the artists
+- The similarity engine is a real improvement on the v1 baseline: **0.648 →
+  0.865**.
+- **The chain engine scores worse than the baseline on this test**, and it is
+  still the default. It has the highest precision of any configuration and the
+  lowest recall: it groups correctly but sparsely, because it looks for repeated
+  contiguous spans while this gold set annotates line-final rhyme. It answers a
+  different question — the one this project is *about* — and both engines are
+  one click apart.
+- **Metrics alone do not identify the artist.** Every classifier lands at or
+  below the 25% chance level, and no single metric separates the artists
   (ANOVA p = 0.29–0.96). With 3 verses per artist that is *no evidence*, not
   evidence of no effect — but it does mean the artist-similarity and dendrogram
   figures show clustering this corpus cannot support.
 
-The annotations were made by Claude following a documented protocol, not by a
-human expert. They are a consistent reference for comparing engines, not ground
-truth; independent re-annotation is the most valuable next step.
+The gold set was annotated by a model to a documented protocol, not by a human
+expert, and not checked against a second annotator. It is a reproducible
+reference, not ground truth: it compares engines against one consistent
+standard, which is what an ablation needs, but the absolute values carry the
+annotator's bias. Independent re-annotation is the single highest-value
+improvement to this evaluation.
 
-## Rhyme matching
+---
 
-By default a syllable's signature is its vowel, its stress, and its exact coda,
-so two syllables rhyme only if all three match. Passing
-`use_consonant_families=True` replaces each coda consonant with its natural class
-(NAS, PLO, SIB, FRI, LIQ, GLI, ASP), which makes slant rhymes such as
-`loud` / `out` (both `AW` + plosive) group together.
+## Metrics
 
-## Figures
+| Metric | Meaning |
+|---|---|
+| **Density** | % of syllables carrying a rhyme label |
+| **Multi** | % of syllables inside a run of ≥2 consecutive syllables sharing one label |
+| **Diversity** | distinct rhyme groups / total syllables |
+| **Groups** | number of distinct rhyme groups |
+| **Syllables** | total syllable count |
 
-![artist averages](./data/artist_averages.png)
-![density boxplot](./data/boxplot_density.png)
-![all tracks](./data/scatter_all.png)
-![Eminem track similarity](./data/similarity_Eminem.png)
+---
 
-## Requirements
-
-Python 3.10+, plus the packages in `requirements.txt`.
-
-## Layout
+## Development
 
 ```
-rhymemap/        core: models, phonetics, engine, metrics, visual, main
-scripts/    CLI entry points (stats generation, NLTK bootstrap)
-analysis/   figure generation
-tests/      unit tests
-dataset/    input corpora and the demo verse
-data/       generated stats.csv and figures
-web/        browser viewer
+rhymemap/          the library — the only thing pip installs
+  phonetics.py     cleaning, phoneme lookup, syllabification
+  phonology.py     articulatory feature tables and distances
+  similarity.py    syllable scoring and clustering
+  chains.py        multisyllabic span detection
+  naming.py        names a group after its own rime
+  sources/         turning a link into lyrics
+scripts/           the server, the CLI entry points — not distributed
+analysis/          figures — not distributed
+eval/              gold set, ablation, artist-ID experiment
+web/               the viewer: three files, no build step
 ```
 
-Developer notes: [DOC_DEV.md](./DOC_DEV.md) · Version history: [HISTORY.md](./HISTORY.md)
+Every entry point is a real CLI:
+
+```bash
+python -m rhymemap.main --file my_lyrics.txt --artist "Nas" --legend
+python -m scripts.analyse_song "https://www.youtube.com/watch?v=..."
+python -m scripts.generate_stats --input dataset/my_corpus.csv
+```
+
+`make test-offline` runs the whole suite with every outbound connection blocked.
+The song loader is network-bound by nature, so a test that quietly reached
+YouTube or LRCLIB would be flaky in CI and would pass locally for whoever wrote
+it. There is a check that none does.
+
+More in [DOC_DEV.md](./DOC_DEV.md); the history of what changed and why is in
+[HISTORY.md](./HISTORY.md).
+
+---
+
+## Deploying your own
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/yahyabmo/RhymeMap)
+
+One click. It reads `render.yaml`, builds the `Dockerfile`, and gives you the
+whole application at a URL. Free, no credit card, sleeps after 15 minutes idle.
+Full notes, including what changes when YouTube refuses a datacentre address:
+[docs/DEPLOY.md](./docs/DEPLOY.md).
+
+---
+
+## Licence
+
+[MIT](./LICENSE).
+
+Lyrics in `dataset/` are excerpts used for analysis and remain the property of
+their authors. RhymeMapper never downloads or redistributes audio.
