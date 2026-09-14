@@ -1,9 +1,15 @@
 # RhymeMapper
 
+**Live: [rhymemapper.onrender.com](https://rhymemapper.onrender.com)** — paste a
+YouTube link. (Free hosting sleeps when idle; the first visit after a quiet spell
+takes about 50 seconds to wake.)
+
 **RhymeMapper** analyses rhyme schemes in rap lyrics from phonetic data. It converts
 words to phonemes, splits them into syllables, and groups syllables that rhyme —
 colour-coding them in the terminal and in a browser viewer, and computing metrics
 that can be compared across tracks and artists.
+
+Built by **Yahya Bel Hajjam**.
 
 ## Install
 
@@ -130,6 +136,10 @@ No link? Paste lyrics directly, or point the tool at a local file with
 
 ## Online
 
+Running at **[rhymemapper.onrender.com](https://rhymemapper.onrender.com)**.
+
+To run your own copy:
+
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/yahyabmo/RhymeMap)
 
 One click. It reads `render.yaml`, builds the `Dockerfile`, and gives you the
@@ -181,10 +191,9 @@ caption track, per line from a synced lyric.
 
 ### Your own photo on the author card
 
-Save a picture as `web/me.jpg` (`.png` and `.webp` also work). It is copied into
-the published site automatically. Without one the card shows a lettered disc, so
-nothing is ever broken — and the name and title are the two lines directly under
-the image in `web/index.html`.
+Save a picture as `web/me.jpg` (`.png` and `.webp` also work). Without one the
+card shows a lettered disc, so nothing is ever broken — and the name and title
+are the two lines directly under the image in `web/index.html`.
 
 The design system is written down in [docs/DESIGN.md](./docs/DESIGN.md) — palette,
 type scale, motion rules, component specs. Its one idea: **the analysis is the
