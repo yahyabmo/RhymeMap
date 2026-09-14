@@ -100,11 +100,12 @@ and `.github/workflows/pages.yml` publishes it to GitHub Pages for free. Enable
 **Settings → Pages → Source: GitHub Actions** once and it deploys on every push
 to `main`.
 
-The full version, which analyses new links, needs Python running; the included
-`Dockerfile` deploys to Hugging Face Spaces or Render on their free tiers. One
-caveat worth knowing first: YouTube blocks datacenter IPs, so the link box is
-much less reliable from a cloud host than from your own machine. Pasting lyrics
-is unaffected.
+The full version, which analyses new links, needs Python running. The included
+`Dockerfile` and `render.yaml` deploy to Render's free tier (no card; it sleeps
+after 15 minutes idle). Two caveats worth knowing first: YouTube blocks
+datacenter IPs, so the link box is much less reliable from a cloud host than
+from your own machine — pasting lyrics is unaffected — and Hugging Face Spaces
+is no longer an option, having made Docker PRO-only.
 
 Full instructions: [docs/DEPLOY.md](./docs/DEPLOY.md)
 
