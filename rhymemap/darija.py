@@ -257,7 +257,14 @@ def arabizi_syllables(word: str) -> list[dict]:
     # word's only vowel ("drt", "chft") it is that word's main vowel, and the
     # engine drops unstressed syllables away from a line end. Leaving it at 0
     # would delete the word from the analysis, and "drt"/"chft" is a real rhyme.
-    if len(parts) == 1 and parts[0]["nucleus"] == SCHWA:
+    #
+    # The one-letter prepositions are the counter-exception. A clitic is
+    # unstressed by definition -- "f tri9" is said [ftri9], leaning on the word
+    # after it -- so promoting its schwa would let "w", "f", "l" and "b" anchor
+    # a rhyme group with each other, which is noise standing where a rhyme
+    # should be.
+    if (len(parts) == 1 and parts[0]["nucleus"] == SCHWA
+            and str(word).strip().lower() not in DARIJA_CLITICS):
         parts[0]["nucleus"] = "AH1"
     return parts
 

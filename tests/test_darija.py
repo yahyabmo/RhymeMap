@@ -190,7 +190,18 @@ class TestRouting(unittest.TestCase):
 
     def test_a_single_letter_preposition_is_not_the_letters_name(self):
         """CMUdict answers "w" with "double-u": three syllables of noise."""
-        self.assertEqual(phonemes_for_word("w", language="dar"), ["W", "AH1"])
+        self.assertEqual(phonemes_for_word("w", language="dar"), ["W", "AH0"])
+
+    def test_a_clitic_is_unstressed_but_a_short_word_is_not(self):
+        """"f tri9" is said [ftri9], leaning on the word after it. Stressing the
+        clitic would let w/f/l/b group with each other, and noise would stand
+        where a rhyme should be -- while "drt"/"chft" must keep its stress."""
+        for clitic in ("w", "f", "l", "b", "d"):
+            with self.subTest(word=clitic):
+                self.assertEqual(darija.arabizi_syllables(clitic)[0]["nucleus"], "AH0")
+        for word in ("drt", "chft", "sber"):
+            with self.subTest(word=word):
+                self.assertEqual(darija.arabizi_syllables(word)[0]["nucleus"], "AH1")
 
     def test_the_cache_key_separates_the_languages(self):
         english = phonemes_for_word("sber", language="en")
