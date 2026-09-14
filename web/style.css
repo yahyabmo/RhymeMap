@@ -415,6 +415,7 @@ body.is-static .hero-hint { display: none; }
   gap: var(--gap-sm);
   justify-content: center;
   flex-wrap: wrap;
+  margin-top: var(--gap-md);
 }
 @media (max-width: 520px) {
   .static-cta { flex-direction: column; }

@@ -313,3 +313,55 @@ class TestOptionalAssets(unittest.TestCase):
     def test_a_missing_photo_is_hidden_rather_than_broken(self):
         app = (WEB_DIR / "app.js").read_text(encoding="utf-8")
         self.assertIn("profileAvatar.addEventListener('error'", app)
+
+
+class TestAssetStamping(unittest.TestCase):
+    """Pages caches JS and CSS hard, and the filenames never changed.
+
+    A deploy could therefore alter every effect on the page and a returning
+    visitor would see none of them, with nothing to suggest why.
+    """
+
+    def stamp(self, extra=""):
+        import tempfile
+
+        from scripts.build_static import stamp_assets
+
+        with tempfile.TemporaryDirectory() as raw:
+            site = Path(raw)
+            (site / "index.html").write_text(
+                '<link href="style.css"><script src="app.js"></script>'
+                '<script src="effects.js"></script><script src="data.js"></script>',
+                encoding="utf-8")
+            (site / "style.css").write_text("body{}", encoding="utf-8")
+            (site / "app.js").write_text("// app", encoding="utf-8")
+            (site / "effects.js").write_text("// fx", encoding="utf-8")
+            (site / "data.js").write_text(f"// data{extra}", encoding="utf-8")
+            version = stamp_assets(site)
+            return version, (site / "index.html").read_text(encoding="utf-8")
+
+    def test_every_versioned_asset_is_stamped(self):
+        _, html = self.stamp()
+        for name in ("style.css", "app.js", "effects.js", "data.js"):
+            with self.subTest(asset=name):
+                self.assertIn(f'{name}?v=', html)
+
+    def test_the_stamp_follows_the_content(self):
+        first, _ = self.stamp()
+        second, _ = self.stamp(extra="changed")
+        self.assertNotEqual(first, second)
+
+    def test_identical_content_keeps_the_same_url(self):
+        """Otherwise every deploy would discard a cache that was still valid."""
+        self.assertEqual(self.stamp()[0], self.stamp()[0])
+
+    def test_the_data_file_is_part_of_the_stamp(self):
+        """Stamping before data.js was written left the songs cached forever."""
+        import inspect
+
+        from scripts import build_static
+
+        source = inspect.getsource(build_static.build)
+        self.assertLess(source.index('data = output / "data.js"'),
+                        source.index("stamp_assets(output)"),
+                        "stamp_assets must run after data.js is written")

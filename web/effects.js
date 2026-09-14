@@ -57,10 +57,10 @@ const Effects = (() => {
     // chroma competing for attention; an aurora bright enough to notice on its
     // own is already too bright.
     const blobs = [
-      { hue: 22,  x: 0.16, y: 0.10, r: 0.52, dx: 0.000035, dy: 0.000022, a: 0.15 },
-      { hue: 196, x: 0.86, y: 0.18, r: 0.44, dx: -0.00003, dy: 0.000031, a: 0.12 },
-      { hue: 282, x: 0.62, y: 0.80, r: 0.58, dx: 0.000022, dy: -0.00002, a: 0.11 },
-      { hue: 338, x: 0.08, y: 0.88, r: 0.40, dx: 0.000041, dy: -0.00003, a: 0.09 },
+      { hue: 22,  x: 0.16, y: 0.10, r: 0.62, dx: 0.000035, dy: 0.000022, a: 0.46 },
+      { hue: 196, x: 0.86, y: 0.18, r: 0.54, dx: -0.00003, dy: 0.000031, a: 0.38 },
+      { hue: 282, x: 0.62, y: 0.80, r: 0.68, dx: 0.000022, dy: -0.00002, a: 0.34 },
+      { hue: 338, x: 0.08, y: 0.88, r: 0.50, dx: 0.000041, dy: -0.00003, a: 0.30 },
     ];
 
     let width = 0, height = 0, dpr = 1;
@@ -134,7 +134,7 @@ const Effects = (() => {
    * A grain tile drawn once and repeated by CSS; cheaper than animating it and
    * quiet enough that it reads as film rather than as texture. */
 
-  function noise(element, opacity = 0.035) {
+  function noise(element, opacity = 0.07) {
     const size = 128;
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = size;
@@ -801,8 +801,8 @@ const Effects = (() => {
     if (!ctx) return { destroy() {}, setHue() {} };
 
     let width = 0, height = 0, hue = 26, raf = 0, timer = 0;
-    const cell = 14;
-    const levels = 11;
+    const cell = 12;
+    const levels = 15;
 
     function resize() {
       width = canvas.width = Math.round(window.innerWidth / 2);
@@ -818,41 +818,64 @@ const Effects = (() => {
       );
     }
 
+    // Marching squares. Each cell's four corners are above or below the
+    // contour level, giving 16 configurations; this table names which pair of
+    // cell edges the contour crosses for each. The first version handled two of
+    // the sixteen and drew disconnected scratches instead of contour lines.
+    //
+    // Edges: 0 top, 1 right, 2 bottom, 3 left.
+    const SEGMENTS = [
+      [], [[3, 2]], [[2, 1]], [[3, 1]],
+      [[0, 1]], [[3, 2], [0, 1]], [[2, 0]], [[3, 0]],
+      [[3, 0]], [[2, 0]], [[3, 0], [2, 1]], [[2, 0]],
+      [[3, 1]], [[2, 1]], [[3, 2]], [],
+    ];
+
     function draw(t) {
       ctx.clearRect(0, 0, width, height);
-      ctx.lineWidth = 1.25;
+      ctx.lineWidth = 1.6;
+      ctx.lineJoin = 'round';
 
       for (let level = 0; level < levels; level += 1) {
         const threshold = -2.6 + (level / (levels - 1)) * 5.2;
         ctx.beginPath();
+
         for (let y = 0; y < height; y += cell) {
           for (let x = 0; x < width; x += cell) {
-            // Marching squares, reduced to the two segments that matter for a
-            // line drawing: interpolate where the contour crosses each edge.
-            const a = field(x, y, t);
-            const b = field(x + cell, y, t);
-            const c = field(x + cell, y + cell, t);
-            const d = field(x, y + cell, t);
-            const cross = (p, q) => (threshold - p) / (q - p || 1e-6);
+            const a = field(x, y, t);                    // top-left
+            const b = field(x + cell, y, t);             // top-right
+            const c = field(x + cell, y + cell, t);      // bottom-right
+            const d = field(x, y + cell, t);             // bottom-left
 
-            if ((a < threshold) !== (b < threshold)) {
-              const u = cross(a, b);
-              ctx.moveTo(x + cell * u, y);
-              if ((b < threshold) !== (c < threshold)) {
-                ctx.lineTo(x + cell, y + cell * cross(b, c));
-              } else if ((a < threshold) !== (d < threshold)) {
-                ctx.lineTo(x, y + cell * cross(a, d));
-              }
-            } else if ((d < threshold) !== (c < threshold) && (a < threshold) !== (d < threshold)) {
-              ctx.moveTo(x, y + cell * cross(a, d));
-              ctx.lineTo(x + cell * cross(d, c), y + cell);
+            const index = (a > threshold ? 1 : 0) | (b > threshold ? 2 : 0)
+                        | (c > threshold ? 4 : 0) | (d > threshold ? 8 : 0);
+            const segments = SEGMENTS[index];
+            if (!segments.length) continue;
+
+            // Where along each edge the contour crosses, linearly interpolated
+            // so the lines are smooth rather than stepped to the grid.
+            const at = (p, q) => (threshold - p) / (q - p || 1e-6);
+            const point = (edge) => {
+              if (edge === 0) return [x + cell * at(a, b), y];
+              if (edge === 1) return [x + cell, y + cell * at(b, c)];
+              if (edge === 2) return [x + cell * at(d, c), y + cell];
+              return [x, y + cell * at(a, d)];
+            };
+
+            for (const [from, to] of segments) {
+              const start = point(from);
+              const end = point(to);
+              ctx.moveTo(start[0], start[1]);
+              ctx.lineTo(end[0], end[1]);
             }
           }
         }
-        // Quiet, but it has to be visible: at 0.05 the contours were below the
-        // threshold where anyone could see there was a background at all.
-        const fade = 0.13 + 0.06 * Math.sin(level * 0.9);
-        ctx.strokeStyle = `hsla(${hue}, 62%, 66%, ${fade})`;
+
+        // Measured: at 0.13 the mean lit luminance over the whole canvas was
+        // 0.4/255, i.e. nothing. Contours are line art, so almost no pixels are
+        // lit at all and each one has to carry.
+        const fade = 0.38 + 0.16 * Math.sin(level * 0.9);
+        ctx.strokeStyle = `hsla(${hue}, 65%, 70%, ${fade})`;
         ctx.stroke();
       }
     }

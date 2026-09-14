@@ -16,6 +16,7 @@ local install.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -32,6 +33,33 @@ ASSETS = ("index.html", "style.css", "app.js", "effects.js")
 # lettered disc without it, so a missing photo must not fail the build.
 OPTIONAL_ASSETS = ("me.jpg", "me.jpeg", "me.png", "me.webp")
 
+
+def stamp_assets(output: Path) -> str:
+    """Append a content hash to the script and stylesheet URLs.
+
+    GitHub Pages serves assets with a long cache lifetime, so a returning
+    visitor keeps the JavaScript and CSS their browser already has. The HTML
+    itself revalidates, but it pointed at unversioned filenames - so a deploy
+    could change every effect on the page and a returning visitor would see
+    none of it, with nothing to suggest why.
+
+    The hash covers the files together: they change together, and one token is
+    simpler than three. Same content, same URL, so the cache still works.
+    """
+    digest = hashlib.sha256()
+    for name in ("style.css", "app.js", "effects.js", "data.js"):
+        target = output / name
+        if target.exists():
+            digest.update(target.read_bytes())
+    version = digest.hexdigest()[:10]
+
+    page = output / "index.html"
+    html = page.read_text(encoding="utf-8")
+    for name in ("style.css", "app.js", "effects.js", "data.js"):
+        html = html.replace(f'"{name}"', f'"{name}?v={version}"')
+    page.write_text(html, encoding="utf-8")
+    print(f"  assets stamped v{version}")
+    return version
 
 def build(output: Path, engine: str, dataset: str, min_occurrences: int,
           include_demo: bool = True) -> int:
@@ -80,6 +108,10 @@ def build(output: Path, engine: str, dataset: str, min_occurrences: int,
         handle.write("const rhymeData = ")
         json.dump(verses, handle, ensure_ascii=False)
         handle.write(";\n")
+
+    # After data.js exists: the stamp has to cover it, or a deploy that only
+    # changes the songs would reuse the cached copy of the old ones.
+    stamp_assets(output)
 
     # Tell GitHub Pages not to run the output through Jekyll.
     (output / ".nojekyll").write_text("", encoding="utf-8")
