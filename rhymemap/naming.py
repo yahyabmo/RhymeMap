@@ -48,6 +48,12 @@ CONSONANT_SPELLING = {
     "JH": "j", "K": "k", "L": "l", "M": "m", "N": "n", "NG": "ng", "P": "p",
     "R": "r", "S": "s", "SH": "sh", "T": "t", "TH": "th", "V": "v", "W": "w",
     "Y": "y", "Z": "z", "ZH": "zh",
+    # Darija, spelled back the way it was written: Arabizi, not ARPAbet. A
+    # group of Moroccan rhymes should be called "-a3" and "-i9", because that
+    # is what the reader is looking at on the page. Without these the fallback
+    # lowercases the phoneme name and offers "-aain".
+    "AIN": "3", "HS": "7", "Q": "9", "Q2": "2", "X": "kh", "GH": "gh",
+    "SD": "s", "DD": "d", "TD": "t", "ZD": "z",
 }
 
 _STRESS = re.compile(r"\d$")
@@ -60,7 +66,16 @@ a an the and but or nor of to in on at for with from by as is it its im i you
 your youre me my we us our they them their he she his her be been being am are
 was were do dont does did so that this these those what when who how if up no
 not now get got just aint cause coz em ya yeah oh uh ah
+""".split()) | frozenset("""
+w f l b d o dyal dyali li hada hadi had dak dik chi kol kola koulchi ghir
+ana nta nti huwa hiya hna homa rah raha rani rak kayn kayna machi walo ma
+mn men 3la m3a 3nd bach bla wla walla ila daba hit 7it wach fin kifach chnou
+ta wa7ed wahed lli melli safi yallah ah iyeh la
 """.split())
+"""Words that make poor group names. The Darija half is the same idea as the
+English half -- nobody remembers a rhyme called "-w" -- and it matters more
+here, because Darija writes its prepositions as single letters and they fall at
+the front of half the bars in a verse."""
 
 
 @dataclass

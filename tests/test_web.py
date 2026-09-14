@@ -28,7 +28,7 @@ LYRICS = ("His palms are sweaty, knees weak, arms are heavy\n"
 
 # Keys web/app.js reads. Adding one here means updating the page too.
 VERSE_KEYS = {"artist", "track", "engine", "text", "lines", "metrics", "groups",
-              "audio", "timed", "source"}
+              "audio", "timed", "source", "language"}
 SYLLABLE_KEYS = {"text", "label", "nucleus", "coda", "onset", "start", "end"}
 GROUP_KEYS = {"label", "syllables", "length", "occurrences", "similarity", "strength",
               "rime", "exemplars", "positions"}

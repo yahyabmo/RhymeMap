@@ -168,6 +168,36 @@ CONSONANTS: dict[str, dict] = {
     "HH": {"place": 1.00, "manner": "fricative",   "voice": 0},
 }
 
+# Moroccan Darija adds ten consonants English has no symbol for. They live in
+# their own table so the English scale above can stay fixed (see
+# _MAX_CONSONANT_DISTANCE), then merge into CONSONANTS - the distance function
+# never needs to know which language a phoneme came from.
+#
+# English stops at the velum (place 0.80). Arabic keeps going: uvular,
+# pharyngeal, glottal. Those places are what an English-only table cannot
+# express, and they carry a great deal of Darija rhyme.
+DARIJA_CONSONANTS = {
+    "Q":   {"place": 0.88, "manner": "plosive",   "voice": 0},   # ق  9
+    "X":   {"place": 0.90, "manner": "fricative", "voice": 0},   # خ  kh
+    "GH":  {"place": 0.90, "manner": "fricative", "voice": 1},   # غ  gh
+    "HS":  {"place": 0.96, "manner": "fricative", "voice": 0},   # ح  7
+    "AIN": {"place": 0.96, "manner": "fricative", "voice": 1},   # ع  3
+    "Q2":  {"place": 1.00, "manner": "plosive",   "voice": 0},   # ء  2
+
+    # Emphatics: coronal like their plain counterparts, with a secondary
+    # pharyngeal constriction. Same place and manner, so nothing but the
+    # `emphatic` flag separates /s/ from /sˤ/ - and in Darija that is a
+    # phonemic contrast, not an accent.
+    "SD": {"place": 0.35, "manner": "fricative", "voice": 0, "emphatic": True},  # ص
+    "DD": {"place": 0.35, "manner": "plosive",   "voice": 1, "emphatic": True},  # ض
+    "TD": {"place": 0.35, "manner": "plosive",   "voice": 0, "emphatic": True},  # ط
+    "ZD": {"place": 0.35, "manner": "fricative", "voice": 1, "emphatic": True},  # ظ
+}
+
+ENGLISH_CONSONANTS = tuple(CONSONANTS)
+
+CONSONANTS.update(DARIJA_CONSONANTS)
+
 # How similar two manners sound. Stops and affricates share a closure; nasals
 # and laterals are both sonorants; approximants sit closest to vowels.
 MANNER_DISTANCE = {
@@ -189,6 +219,13 @@ MANNER_DISTANCE = {
 }
 
 CONSONANT_FEATURE_WEIGHTS = {"place": 0.70, "manner": 1.00, "voice": 0.40}
+
+# Emphasis is scored on top of the three weights above rather than alongside
+# them, so it never appears in the denominator. An English pair therefore keeps
+# exactly the distance it had before Darija existed; only a pair where one side
+# is emphatic pays anything. Sized like voicing, which is the contrast it most
+# resembles: same place, same manner, one laryngeal/pharyngeal gesture apart.
+EMPHATIC_WEIGHT = 0.40
 
 
 def manner_distance(a: str, b: str) -> float:
@@ -212,11 +249,25 @@ def _raw_consonant_distance(a: str, b: str) -> float:
         w["place"] * abs(fa["place"] - fb["place"])
         + w["manner"] * manner_distance(fa["manner"], fb["manner"])
         + w["voice"] * (0.0 if fa["voice"] == fb["voice"] else 1.0)
-    )
-    return min(1.0, total / sum(w.values()))
+    ) / sum(w.values())
+
+    # Emphasis defaults to False, so this term is zero for every pair that does
+    # not involve a Darija emphatic.
+    if fa.get("emphatic", False) != fb.get("emphatic", False):
+        total += EMPHATIC_WEIGHT / sum(w.values())
+
+    return min(1.0, total)
 
 
-_MAX_CONSONANT_DISTANCE = _max_pairwise(CONSONANTS, _raw_consonant_distance)
+# Rescaled like the vowels, but deliberately over the English table only.
+# Normalising over every symbol would mean that adding a language silently
+# retunes another one: the widest Darija pair (W/TD) is 8% wider than the widest
+# English pair (P/W), so folding it in would shrink every English distance by
+# that much and shift clusters in verses containing no Darija at all. Pinning
+# the scale to English keeps those verses bit-identical; the handful of Darija
+# pairs beyond the old maximum simply saturate at 1.0, which is the right answer
+# for them anyway - they are as unlike each other as two consonants get.
+_MAX_CONSONANT_DISTANCE = _max_pairwise(ENGLISH_CONSONANTS, _raw_consonant_distance)
 
 
 def consonant_distance(a: str, b: str) -> float:

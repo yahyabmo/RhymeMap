@@ -1,6 +1,6 @@
 # RhymeMapper
 
-.PHONY: help install test test-offline stats plots demo web web-export serve karaoke eval gold tune clean all
+.PHONY: help install test test-offline stats plots demo web web-export serve karaoke eval gold lexicon tune clean all
 
 PYTHON = python3
 DATA_DIR = data
@@ -19,6 +19,7 @@ help:
 	@echo "  make karaoke   Export with word timings (AUDIO=... TIMINGS=...)"
 	@echo "  make eval      Run the ablation and artist-ID experiments"
 	@echo "  make gold      Rebuild eval/gold.json from the annotations"
+	@echo "  make lexicon   Rebuild the Darija word list from the master CSV"
 	@echo "  make clean     Remove caches and generated files"
 	@echo "  make all       stats, plots, then demo"
 	@echo ""
@@ -33,6 +34,12 @@ install:
 
 test:
 	./run_tests.sh
+
+# Reduces dataset/darija_lexicon_master_150k.csv (61 MB of provenance) to the
+# word list the engine actually reads. The output is committed, so this only
+# needs re-running when the master changes.
+lexicon:
+	$(PYTHON) -m scripts.build_darija_lexicon
 
 # The same suite with every outbound connection blocked, proving the song
 # loader's network seams are really substituted rather than reaching out.

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 
+from . import darija
 from .cache import PHONEME_CACHE, SYLLABLE_CACHE
 from .models import Line, Nucleus, Syllable, Verse, Word
 
@@ -67,14 +68,15 @@ def clean_word(text: str) -> str:
     return re.sub(r"[^\w\s]", "", text).lower().strip()
 
 
-def extract_nuclei(word_text: str, line_id: int, word_id: int, is_last_word: bool) -> list[Nucleus]:
+def extract_nuclei(word_text: str, line_id: int, word_id: int, is_last_word: bool,
+                   language: str = "en") -> list[Nucleus]:
     """Vowel phonemes of a word as Nucleus objects.
 
     Retained as public API. Note that ``process_line`` no longer calls this:
     it derives the same objects from the syllable split, which avoids a second
     phoneme lookup per word.
     """
-    vowels = [p for p in phonemes_for_word(word_text) if p and p[-1].isdigit()]
+    vowels = [p for p in phonemes_for_word(word_text, language) if p and p[-1].isdigit()]
     nuclei = [
         Nucleus(
             phoneme=v,
@@ -244,23 +246,52 @@ def _syllabify_one(word_text: str) -> list[dict]:
     ]
 
 
-def _syllable_parts(word_text: str) -> list[dict]:
-    """Return ``[{onset, nucleus, coda}, ...]`` for a word, cached on disk."""
-    cached = SYLLABLE_CACHE.get(word_text)
+def _syllable_parts(word_text: str, language: str = "en") -> list[dict]:
+    """Return ``[{onset, nucleus, coda}, ...]`` for a word, cached on disk.
+
+    The one place where a word's language is decided. Everything downstream --
+    phonemes, syllables, nuclei, signatures, chains -- is built from what this
+    returns, so routing here is enough to carry a Darija word through the whole
+    engine without any other stage knowing there are two languages.
+
+    A Moroccan verse switches language mid-bar, so the choice is per word rather
+    than per song, and it goes in three tiers:
+
+    1. Unmistakably Darija -- an Arabizi digit, or the curated word list. These
+       outrank CMUdict, which is the point of curating them.
+    2. CMUdict, through the spelling variants above.
+    3. Whatever CMUdict could not name, once the verse is known to be Darija
+       (see ``darija.detect_language``). In an English verse this stays with the
+       neural model, which is right for the ad-libs and slang that put an
+       English word out of vocabulary; in a Darija verse that model has nothing
+       useful to say -- it read "kayshuf" as K EY1 Z HH AH0 F -- so Darija takes
+       it. This tier is what covers the inflections no word list can: Darija
+       turns one verb into ktbt, ktbti, ktbna, kaykteb, ghaykteb, makatbch.
+    """
+    key = word_text if language == "en" else f"{language}:{word_text}"
+    cached = SYLLABLE_CACHE.get(key)
     if cached is not None:
         return cached
 
-    parts: list[dict] = []
-    for variant in lookup_variants(word_text):
-        parts = _syllabify_one(variant)
-        if parts:
-            break
+    is_darija = darija.is_darija(word_text) or (
+        language == "dar" and word_text in darija.DARIJA_CLITICS
+    )
+    if is_darija:
+        parts = darija.arabizi_syllables(word_text)
+    else:
+        parts = []
+        for variant in lookup_variants(word_text):
+            parts = _syllabify_one(variant)
+            if parts:
+                break
+        if not parts and language == "dar":
+            parts = darija.arabizi_syllables(word_text)
 
-    SYLLABLE_CACHE.set(word_text, parts)
+    SYLLABLE_CACHE.set(key, parts)
     return parts
 
 
-def phonemes_for_word(word_text: str) -> list[str]:
+def phonemes_for_word(word_text: str, language: str = "en") -> list[str]:
     """Return ARPAbet phonemes for a word, using CMUdict then g2p.
 
     Results are cached in memory and on disk, keyed by the cleaned word.
@@ -268,7 +299,8 @@ def phonemes_for_word(word_text: str) -> list[str]:
     if not word_text:
         return []
 
-    cached = PHONEME_CACHE.get(word_text)
+    key = word_text if language == "en" else f"{language}:{word_text}"
+    cached = PHONEME_CACHE.get(key)
     if cached is not None:
         return list(cached)
 
@@ -276,7 +308,7 @@ def phonemes_for_word(word_text: str) -> list[str]:
     # phonemes can be reassembled from the syllable split instead of loading a
     # second copy of the dictionary. Materialising CMUdict here cost more than
     # the neural fallback it was meant to avoid.
-    parts = _syllable_parts(word_text)
+    parts = _syllable_parts(word_text, language)
     if parts:
         phonemes = []
         for part in parts:
@@ -288,19 +320,20 @@ def phonemes_for_word(word_text: str) -> list[str]:
         # Genuinely out of vocabulary: pay for the neural model, once, ever.
         phonemes = [p for p in _get_g2p()(word_text) if p != " "]
 
-    PHONEME_CACHE.set(word_text, phonemes)
+    PHONEME_CACHE.set(key, phonemes)
     return phonemes
 
 
-def extract_syllables(word_text: str, line_id: int, word_id: int, is_last_word: bool) -> list[Syllable]:
+def extract_syllables(word_text: str, line_id: int, word_id: int, is_last_word: bool,
+                      language: str = "en") -> list[Syllable]:
     """Split a word into Syllable objects, with position metadata filled in."""
     if not word_text:
         return []
 
-    parts = _syllable_parts(word_text)
+    parts = _syllable_parts(word_text, language)
     if not parts:
         # Not in CMUdict: fall back to the phoneme heuristic.
-        syllables = heuristic_syllables(phonemes_for_word(word_text), word_text)
+        syllables = heuristic_syllables(phonemes_for_word(word_text, language), word_text)
     else:
         texts = split_word_text(word_text, len(parts))
         syllables = [
@@ -327,7 +360,7 @@ def extract_syllables(word_text: str, line_id: int, word_id: int, is_last_word: 
 # ---------------------------------------------------------------------------
 
 
-def process_line(line_text: str, line_id: int) -> Line:
+def process_line(line_text: str, line_id: int, language: str = "en") -> Line:
     """Build a Line from raw text."""
     raw_words = line_text.split()
     line_obj = Line(text=line_text, line_id=line_id)
@@ -335,7 +368,7 @@ def process_line(line_text: str, line_id: int) -> Line:
     for i, raw_word in enumerate(raw_words):
         cleaned = clean_word(raw_word)
         is_last = i == len(raw_words) - 1
-        syllables = extract_syllables(cleaned, line_id, i, is_last)
+        syllables = extract_syllables(cleaned, line_id, i, is_last, language)
         line_obj.words.append(
             Word(
                 text=cleaned,
@@ -350,7 +383,7 @@ def process_line(line_text: str, line_id: int) -> Line:
 
 
 def process_verse(raw_text: str, artist: str = "Unknown", verse_id: int = 0,
-                  on_line=None) -> Verse:
+                  on_line=None, language: str = None) -> Verse:
     """Entry point: raw lyrics -> Verse. Blank lines are skipped.
 
     ``on_line(done, total)`` is called after each line when supplied. This is
@@ -358,14 +391,22 @@ def process_verse(raw_text: str, artist: str = "Unknown", verse_id: int = 0,
     lookup and syllabification dominate the cost of an analysis, and they happen
     one line at a time. Counting lines is therefore a real measure of progress
     rather than a timer pretending to be one.
+
+    ``language`` is ``"en"``, ``"dar"``, or ``None`` to detect it from the
+    lyrics. It is decided once for the whole verse rather than per line, because
+    a single bar is short enough to contain no Darija at all while the verse
+    around it plainly is.
     """
-    verse_obj = Verse(metadata={"artist": artist}, verse_id=verse_id)
+    if language is None:
+        language = darija.detect_language(raw_text)
+
+    verse_obj = Verse(metadata={"artist": artist, "language": language}, verse_id=verse_id)
     lines = [line.strip() for line in raw_text.strip().split("\n")]
     lines = [line for line in lines if line]
     total = len(lines)
 
     for line_id, line_text in enumerate(lines):
-        verse_obj.lines.append(process_line(line_text, line_id))
+        verse_obj.lines.append(process_line(line_text, line_id, language))
         if on_line is not None:
             on_line(line_id + 1, total)
     return verse_obj

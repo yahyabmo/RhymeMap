@@ -96,6 +96,11 @@ def verse_to_dict(verse, artist: str, track: str, engine: str, chains=None, text
         "lines": lines,
         "metrics": compute_metrics(verse),
         "groups": _group_summary(verse, chains),
+        # "en" or "dar", detected from the lyrics. The viewer says which one it
+        # read the verse as, because that choice changes every phoneme under it
+        # and a reader looking at Moroccan rhyme groups should be told the
+        # engine knew it was Moroccan.
+        "language": verse.metadata.get("language", "en"),
         # Empty unless --audio/--timings were given; the viewer hides its player.
         "audio": audio,
         "timed": any(syl.start is not None for syl in verse.syllables()),

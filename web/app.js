@@ -787,13 +787,20 @@ async function analyseLink(query) {
       { url: query.trim(), engine: ui.engineSelect.value },
       (event) => setProgress(event.progress ?? 0, event.stage || 'working'));
     addVerse(payload);
-    setStatus(`${payload.artist} — ${payload.track}: ${payload.metrics.syllables} syllables, ${payload.metrics.signatures} rhyme groups.`);
+    setStatus(`${payload.artist} — ${payload.track}: ${payload.metrics.syllables} syllables, ${payload.metrics.signatures} rhyme groups.${languageNote(payload)}`);
   } catch (error) {
     setStatus(String(error.message || error), 'error');
   } finally {
     clearProgress();
     ui.analyse.disabled = false;
   }
+}
+
+/* The engine reads Moroccan Darija as well as English, and which one it chose
+   changes every phoneme underneath the colours. Say so when it is not English,
+   so nobody has to wonder whether the groups on screen mean anything. */
+function languageNote(payload) {
+  return payload?.language === 'dar' ? ' Read as Moroccan Darija.' : '';
 }
 
 async function analysePasted() {
@@ -806,7 +813,7 @@ async function analysePasted() {
   try {
     const payload = await post('/api/analyze', { lyrics, engine: ui.engineSelect.value });
     addVerse(payload);
-    setStatus(`${payload.metrics.syllables} syllables, ${payload.metrics.signatures} rhyme groups.`);
+    setStatus(`${payload.metrics.syllables} syllables, ${payload.metrics.signatures} rhyme groups.${languageNote(payload)}`);
   } catch (error) {
     setStatus(String(error.message || error), 'error');
   } finally {
@@ -829,7 +836,7 @@ async function reanalyseCurrent() {
     payload.source = current.source;
     if (index >= 0) verses[index] = payload;
     Effects.swap(() => show(payload));
-    setStatus(`${payload.engine}: ${payload.metrics.density}% density, ${payload.metrics.signatures} groups.`);
+    setStatus(`${payload.engine}: ${payload.metrics.density}% density, ${payload.metrics.signatures} groups.${languageNote(payload)}`);
   } catch (error) {
     setStatus(String(error.message || error), 'error');
     ui.engineSelect.value = current.engine;

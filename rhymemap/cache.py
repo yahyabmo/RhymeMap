@@ -27,8 +27,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CACHE_DIR = Path(os.environ.get("RHYMEMAP_CACHE_DIR", PROJECT_ROOT / ".cache"))
 
-# Bump when the stored value format changes, so stale entries are ignored.
-CACHE_VERSION = 2
+# Bump when the stored value format changes -- or when the same word starts
+# resolving to different phonemes, as it did when Darija routing arrived and
+# "3ndi" stopped being read as English.
+CACHE_VERSION = 3
 
 
 class JsonCache:

@@ -31,6 +31,11 @@ docs
 *.md
 !README.md
 
+# 61 MB of lexicon provenance. scripts/build_darija_lexicon.py already reduced
+# it to the 1.4 MB word list in rhymemap/data/, which is what the engine reads;
+# copying the master too would be paid for on every cold start.
+dataset/darija_lexicon_master_150k.csv
+
 # Audio a developer dropped in locally must never end up in a published image.
 web/*.mp3
 web/*.wav
