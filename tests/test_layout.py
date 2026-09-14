@@ -64,13 +64,41 @@ class TestPackaging(unittest.TestCase):
         """`src` as an installed top-level name collides with every other project."""
         self.assertFalse((REPO_ROOT / "src").exists())
 
-    def test_declared_packages_exist(self):
+    def test_only_the_library_is_distributed(self):
+        """`analysis` and `scripts` are repository tooling.
+
+        Shipping them would install two more generic top-level names into
+        site-packages -- exactly the collision the src/ -> rhymemap/ rename was
+        for. They stay importable from a clone; they are not distributed.
+        """
         text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn("[tool.setuptools.packages.find]", text)
+        include = text.split("include = [")[1].split("]")[0]
+        self.assertIn('"rhymemap*"', include)
+        self.assertNotIn('"analysis', include)
+        self.assertNotIn('"scripts', include)
+
+    def test_every_subpackage_is_distributed(self):
+        """An explicit `packages = [...]` list does not recurse.
+
+        It built a wheel with rhymemap/sources/ -- the whole song-loading layer
+        -- missing, and nothing failed until the package was imported from
+        outside the source tree. The find directive is what prevents that.
+        """
+        text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertNotIn("\npackages = [", text,
+                         "an explicit package list misses subpackages; use the find directive")
+        for path in (REPO_ROOT / "rhymemap").rglob("__init__.py"):
+            with self.subTest(package=path.parent.name):
+                self.assertTrue(path.parent.name.startswith("rhymemap")
+                                or path.parent.parent.name == "rhymemap",
+                                f"{path.parent} would not be matched by include = [\"rhymemap*\"]")
+
+    def test_repository_tooling_is_still_importable(self):
         for package in ("rhymemap", "analysis", "scripts"):
             with self.subTest(package=package):
-                self.assertIn(f'"{package}"', text)
                 self.assertTrue((REPO_ROOT / package / "__init__.py").is_file(),
-                                f"{package} is declared in pyproject but has no __init__.py")
+                                f"{package} has no __init__.py, so `python -m {package}.x` is fragile")
 
 
 if __name__ == "__main__":
